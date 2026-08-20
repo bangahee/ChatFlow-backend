@@ -91,7 +91,10 @@ class AIService:
             input=build_ai_messages(question, history),
             store=False,
         )
-        return response.output_text
+        output_text = getattr(response, "output_text", None)
+        if not isinstance(output_text, str) or not output_text.strip():
+            raise AIUpstreamError("OpenAI response is empty")
+        return output_text.strip()
 
 
 def create_ai_responder(settings: Settings) -> AIResponder:
