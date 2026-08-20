@@ -10,7 +10,7 @@ from app.config import Settings
 from app.database import get_db
 from app.models import User
 from app.repositories.user import get_user_by_username
-from app.services.ai import generate_ai_response
+from app.services.ai import create_ai_responder
 from app.services.auth import TokenValidationError, decode_access_token
 from app.services.chat import AIResponder
 
@@ -21,9 +21,11 @@ def get_app_settings(request: Request) -> Settings:
     return request.app.state.settings
 
 
-def get_ai_responder() -> AIResponder:
+def get_ai_responder(
+    settings: Annotated[Settings, Depends(get_app_settings)],
+) -> AIResponder:
     """Return the configured production AI responder."""
-    return generate_ai_response
+    return create_ai_responder(settings)
 
 
 def unauthorized_exception() -> HTTPException:
