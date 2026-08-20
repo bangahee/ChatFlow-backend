@@ -6,6 +6,11 @@ from openai import AsyncOpenAI
 from app.config import Settings, get_settings
 from app.models import ChatLog
 
+SYSTEM_PROMPT = (
+    "You are ChatFlow, a helpful AI assistant. "
+    "Answer the user's question clearly and safely."
+)
+
 
 class AIServiceError(RuntimeError):
     """Base error for AI failures that can be mapped to an HTTP response."""
@@ -32,6 +37,19 @@ class AIClient(Protocol):
 
 
 AIResponder = Callable[[str, list[ChatLog], str], Awaitable[str]]
+
+
+def build_ai_messages(
+    question: str,
+    history: list[ChatLog],
+) -> list[dict[str, str]]:
+    """Build system, recent history, and current-question messages in order."""
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for chat in history[-3:]:
+        messages.append({"role": "user", "content": chat.question})
+        messages.append({"role": "assistant", "content": chat.response})
+    messages.append({"role": "user", "content": question})
+    return messages
 
 
 class AIService:
@@ -67,10 +85,10 @@ class AIService:
         history: list[ChatLog],
         request_id: str,
     ) -> str:
-        del history, request_id
+        del request_id
         response = await self._get_client().responses.create(
             model=self.settings.openai_model,
-            input=question,
+            input=build_ai_messages(question, history),
             store=False,
         )
         return response.output_text
