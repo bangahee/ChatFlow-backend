@@ -38,6 +38,7 @@ class AIClient(Protocol):
 
 
 AIResponder = Callable[[str, list[ChatLog], str], Awaitable[str]]
+SleepCallable = Callable[[float], Awaitable[None]]
 
 
 def build_ai_messages(
@@ -61,9 +62,11 @@ class AIService:
         settings: Settings,
         *,
         client: AIClient | None = None,
+        sleep: SleepCallable = asyncio.sleep,
     ) -> None:
         self.settings = settings
         self._client = client
+        self._sleep = sleep
 
     def _get_client(self) -> AIClient:
         if self._client is not None:
@@ -80,6 +83,16 @@ class AIService:
         )
         return self._client
 
+    async def _retry_or_raise(
+        self,
+        *,
+        attempt: int,
+        final_error: AIServiceError,
+    ) -> None:
+        if attempt > self.settings.openai_max_retries:
+            raise final_error
+        await self._sleep(float(2 ** (attempt - 1)))
+
     async def generate(
         self,
         question: str,
@@ -87,19 +100,30 @@ class AIService:
         request_id: str,
     ) -> str:
         del request_id
-        try:
-            async with asyncio.timeout(self.settings.openai_timeout_seconds):
-                response = await self._get_client().responses.create(
-                    model=self.settings.openai_model,
-                    input=build_ai_messages(question, history),
-                    store=False,
+        messages = build_ai_messages(question, history)
+        total_attempts = self.settings.openai_max_retries + 1
+
+        for attempt in range(1, total_attempts + 1):
+            try:
+                async with asyncio.timeout(self.settings.openai_timeout_seconds):
+                    response = await self._get_client().responses.create(
+                        model=self.settings.openai_model,
+                        input=messages,
+                        store=False,
+                    )
+            except (TimeoutError, APITimeoutError):
+                await self._retry_or_raise(
+                    attempt=attempt,
+                    final_error=AITimeoutError("OpenAI request timed out"),
                 )
-        except (TimeoutError, APITimeoutError) as exc:
-            raise AITimeoutError("OpenAI request timed out") from exc
-        output_text = getattr(response, "output_text", None)
-        if not isinstance(output_text, str) or not output_text.strip():
-            raise AIUpstreamError("OpenAI response is empty")
-        return output_text.strip()
+                continue
+
+            output_text = getattr(response, "output_text", None)
+            if not isinstance(output_text, str) or not output_text.strip():
+                raise AIUpstreamError("OpenAI response is empty")
+            return output_text.strip()
+
+        raise AITimeoutError("OpenAI request timed out")
 
 
 def create_ai_responder(settings: Settings) -> AIResponder:
