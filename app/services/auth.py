@@ -4,15 +4,26 @@ import jwt
 from jwt.exceptions import InvalidTokenError
 from pwdlib import PasswordHash
 from pwdlib.exceptions import UnknownHashError
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-
+from app.models import User
+from app.repositories.user import add_user, get_user_by_username
 
 password_hash = PasswordHash.recommended()
 
 
 class TokenValidationError(ValueError):
     """Raised when an access token cannot identify a valid subject."""
+
+
+class DuplicateUsernameError(ValueError):
+    """Raised when a username cannot be registered more than once."""
+
+
+class InvalidCredentialsError(ValueError):
+    """Raised when a login attempt cannot be authenticated."""
 
 
 def hash_password(password: str) -> str:
@@ -26,6 +37,32 @@ def verify_password(password: str, hashed_password: str) -> bool:
         return password_hash.verify(password, hashed_password)
     except UnknownHashError:
         return False
+
+
+def register_user(db: Session, username: str, password: str) -> User:
+    """Create and commit a user with a securely hashed password."""
+    if get_user_by_username(db, username) is not None:
+        raise DuplicateUsernameError("Username already exists")
+
+    try:
+        user = add_user(db, username, hash_password(password))
+        db.commit()
+        db.refresh(user)
+        return user
+    except IntegrityError as exc:
+        db.rollback()
+        raise DuplicateUsernameError("Username already exists") from exc
+    except Exception:
+        db.rollback()
+        raise
+
+
+def authenticate_user(db: Session, username: str, password: str) -> User:
+    """Return the authenticated user without revealing failure details."""
+    user = get_user_by_username(db, username)
+    if user is None or not verify_password(password, user.hashed_password):
+        raise InvalidCredentialsError("Invalid username or password")
+    return user
 
 
 def create_access_token(
