@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
@@ -12,6 +14,8 @@ from openai import (
 
 from app.config import Settings, get_settings
 from app.models import ChatLog
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are ChatFlow, a helpful AI assistant. "
@@ -126,17 +130,66 @@ class AIService:
             raise final_error
         await self._sleep(float(2 ** (attempt - 1)))
 
+    def _log_started(self, request_id: str, attempt: int, question: str) -> None:
+        logger.info(
+            "ai_call_started",
+            extra={
+                "request_id": request_id,
+                "attempt": attempt,
+                "question_length": len(question),
+            },
+        )
+
+    def _log_succeeded(
+        self,
+        request_id: str,
+        attempt: int,
+        question: str,
+        response: str,
+        started_at: float,
+    ) -> None:
+        logger.info(
+            "ai_call_succeeded",
+            extra={
+                "request_id": request_id,
+                "attempt": attempt,
+                "question_length": len(question),
+                "response_length": len(response),
+                "latency_ms": round((time.monotonic() - started_at) * 1000, 2),
+            },
+        )
+
+    def _log_failed(
+        self,
+        request_id: str,
+        attempt: int,
+        question: str,
+        error: BaseException,
+        started_at: float,
+    ) -> None:
+        logger.warning(
+            "ai_call_failed",
+            extra={
+                "request_id": request_id,
+                "attempt": attempt,
+                "question_length": len(question),
+                "error_type": type(error).__name__,
+                "latency_ms": round((time.monotonic() - started_at) * 1000, 2),
+            },
+        )
+
     async def generate(
         self,
         question: str,
         history: list[ChatLog],
         request_id: str,
     ) -> str:
-        del request_id
         messages = build_ai_messages(question, history)
         total_attempts = self.settings.openai_max_retries + 1
 
         for attempt in range(1, total_attempts + 1):
+            self._log_started(request_id, attempt, question)
+            started_at = time.monotonic()
             try:
                 async with asyncio.timeout(self.settings.openai_timeout_seconds):
                     response = await self._get_client().responses.create(
@@ -148,25 +201,38 @@ class AIService:
                 output_text = getattr(response, "output_text", None)
                 if not isinstance(output_text, str) or not output_text.strip():
                     raise AIUpstreamError("OpenAI response is empty")
-                return output_text.strip()
-            except AIServiceError:
+                result = output_text.strip()
+                self._log_succeeded(
+                    request_id,
+                    attempt,
+                    question,
+                    result,
+                    started_at,
+                )
+                return result
+            except AIServiceError as exc:
+                self._log_failed(request_id, attempt, question, exc, started_at)
                 raise
-            except (TimeoutError, APITimeoutError):
+            except (TimeoutError, APITimeoutError) as exc:
+                self._log_failed(request_id, attempt, question, exc, started_at)
                 await self._retry_or_raise(
                     attempt=attempt,
                     final_error=AITimeoutError("OpenAI request timed out"),
                 )
             except RateLimitError as exc:
+                self._log_failed(request_id, attempt, question, exc, started_at)
                 unavailable = AIUnavailableError("OpenAI is rate limited or unavailable")
                 if _is_quota_error(exc):
                     raise unavailable from exc
                 await self._retry_or_raise(attempt=attempt, final_error=unavailable)
-            except APIConnectionError:
+            except APIConnectionError as exc:
+                self._log_failed(request_id, attempt, question, exc, started_at)
                 await self._retry_or_raise(
                     attempt=attempt,
                     final_error=AIUpstreamError("Could not connect to OpenAI"),
                 )
             except APIStatusError as exc:
+                self._log_failed(request_id, attempt, question, exc, started_at)
                 if exc.status_code >= 500:
                     await self._retry_or_raise(
                         attempt=attempt,
@@ -177,6 +243,7 @@ class AIService:
                 else:
                     raise AIUpstreamError("OpenAI rejected the request") from exc
             except Exception as exc:
+                self._log_failed(request_id, attempt, question, exc, started_at)
                 raise AIUpstreamError("Unexpected OpenAI response failure") from exc
 
         raise AIUnavailableError("OpenAI response generation failed")
