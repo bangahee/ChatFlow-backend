@@ -9,7 +9,6 @@ from pydantic import (
     field_validator,
 )
 
-
 Username = Annotated[
     str,
     StringConstraints(
@@ -36,7 +35,7 @@ class LoginRequest(BaseModel):
     password: Password
 
 
-class RegisterResponse(BaseModel):
+class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -49,6 +48,10 @@ class RegisterResponse(BaseModel):
         if value.tzinfo is None or value.utcoffset() is None:
             value = value.replace(tzinfo=timezone.utc)
         return value.astimezone(timezone.utc)
+
+
+class RegisterResponse(UserResponse):
+    pass
 
 
 class TokenResponse(BaseModel):
