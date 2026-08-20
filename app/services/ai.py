@@ -1,7 +1,8 @@
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
-from openai import AsyncOpenAI
+from openai import APITimeoutError, AsyncOpenAI
 
 from app.config import Settings, get_settings
 from app.models import ChatLog
@@ -86,11 +87,15 @@ class AIService:
         request_id: str,
     ) -> str:
         del request_id
-        response = await self._get_client().responses.create(
-            model=self.settings.openai_model,
-            input=build_ai_messages(question, history),
-            store=False,
-        )
+        try:
+            async with asyncio.timeout(self.settings.openai_timeout_seconds):
+                response = await self._get_client().responses.create(
+                    model=self.settings.openai_model,
+                    input=build_ai_messages(question, history),
+                    store=False,
+                )
+        except (TimeoutError, APITimeoutError) as exc:
+            raise AITimeoutError("OpenAI request timed out") from exc
         output_text = getattr(response, "output_text", None)
         if not isinstance(output_text, str) or not output_text.strip():
             raise AIUpstreamError("OpenAI response is empty")
