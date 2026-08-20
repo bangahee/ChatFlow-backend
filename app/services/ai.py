@@ -2,7 +2,13 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
-from openai import APITimeoutError, AsyncOpenAI
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AsyncOpenAI,
+    RateLimitError,
+)
 
 from app.config import Settings, get_settings
 from app.models import ChatLog
@@ -10,6 +16,13 @@ from app.models import ChatLog
 SYSTEM_PROMPT = (
     "You are ChatFlow, a helpful AI assistant. "
     "Answer the user's question clearly and safely."
+)
+
+QUOTA_ERROR_MARKERS = (
+    "credit_balance",
+    "insufficient_quota",
+    "spend_limit",
+    "usage_limit",
 )
 
 
@@ -52,6 +65,26 @@ def build_ai_messages(
         messages.append({"role": "assistant", "content": chat.response})
     messages.append({"role": "user", "content": question})
     return messages
+
+
+def _error_code(error: RateLimitError) -> str:
+    code = getattr(error, "code", None)
+    if code:
+        return str(code).lower()
+
+    body = getattr(error, "body", None)
+    if isinstance(body, dict):
+        nested_error = body.get("error")
+        if isinstance(nested_error, dict) and nested_error.get("code"):
+            return str(nested_error["code"]).lower()
+        if body.get("code"):
+            return str(body["code"]).lower()
+    return ""
+
+
+def _is_quota_error(error: RateLimitError) -> bool:
+    code = _error_code(error)
+    return any(marker in code for marker in QUOTA_ERROR_MARKERS)
 
 
 class AIService:
@@ -111,19 +144,42 @@ class AIService:
                         input=messages,
                         store=False,
                     )
+
+                output_text = getattr(response, "output_text", None)
+                if not isinstance(output_text, str) or not output_text.strip():
+                    raise AIUpstreamError("OpenAI response is empty")
+                return output_text.strip()
+            except AIServiceError:
+                raise
             except (TimeoutError, APITimeoutError):
                 await self._retry_or_raise(
                     attempt=attempt,
                     final_error=AITimeoutError("OpenAI request timed out"),
                 )
-                continue
+            except RateLimitError as exc:
+                unavailable = AIUnavailableError("OpenAI is rate limited or unavailable")
+                if _is_quota_error(exc):
+                    raise unavailable from exc
+                await self._retry_or_raise(attempt=attempt, final_error=unavailable)
+            except APIConnectionError:
+                await self._retry_or_raise(
+                    attempt=attempt,
+                    final_error=AIUpstreamError("Could not connect to OpenAI"),
+                )
+            except APIStatusError as exc:
+                if exc.status_code >= 500:
+                    await self._retry_or_raise(
+                        attempt=attempt,
+                        final_error=AIUnavailableError(
+                            "OpenAI is temporarily unavailable"
+                        ),
+                    )
+                else:
+                    raise AIUpstreamError("OpenAI rejected the request") from exc
+            except Exception as exc:
+                raise AIUpstreamError("Unexpected OpenAI response failure") from exc
 
-            output_text = getattr(response, "output_text", None)
-            if not isinstance(output_text, str) or not output_text.strip():
-                raise AIUpstreamError("OpenAI response is empty")
-            return output_text.strip()
-
-        raise AITimeoutError("OpenAI request timed out")
+        raise AIUnavailableError("OpenAI response generation failed")
 
 
 def create_ai_responder(settings: Settings) -> AIResponder:
