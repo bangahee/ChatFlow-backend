@@ -14,6 +14,7 @@ from openai import (
 
 from app.config import Settings, get_settings
 from app.models import ChatLog
+from app.observability import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -131,13 +132,13 @@ class AIService:
         await self._sleep(float(2 ** (attempt - 1)))
 
     def _log_started(self, request_id: str, attempt: int, question: str) -> None:
-        logger.info(
+        log_event(
+            logger,
+            logging.INFO,
             "ai_call_started",
-            extra={
-                "request_id": request_id,
-                "attempt": attempt,
-                "question_length": len(question),
-            },
+            request_id=request_id,
+            attempt=attempt,
+            question_length=len(question),
         )
 
     def _log_succeeded(
@@ -148,15 +149,15 @@ class AIService:
         response: str,
         started_at: float,
     ) -> None:
-        logger.info(
+        log_event(
+            logger,
+            logging.INFO,
             "ai_call_succeeded",
-            extra={
-                "request_id": request_id,
-                "attempt": attempt,
-                "question_length": len(question),
-                "response_length": len(response),
-                "latency_ms": round((time.monotonic() - started_at) * 1000, 2),
-            },
+            request_id=request_id,
+            attempt=attempt,
+            question_length=len(question),
+            response_length=len(response),
+            latency_ms=round((time.monotonic() - started_at) * 1000, 2),
         )
 
     def _log_failed(
@@ -167,15 +168,15 @@ class AIService:
         error: BaseException,
         started_at: float,
     ) -> None:
-        logger.warning(
+        log_event(
+            logger,
+            logging.WARNING,
             "ai_call_failed",
-            extra={
-                "request_id": request_id,
-                "attempt": attempt,
-                "question_length": len(question),
-                "error_type": type(error).__name__,
-                "latency_ms": round((time.monotonic() - started_at) * 1000, 2),
-            },
+            request_id=request_id,
+            attempt=attempt,
+            question_length=len(question),
+            error_type=type(error).__name__,
+            latency_ms=round((time.monotonic() - started_at) * 1000, 2),
         )
 
     async def generate(

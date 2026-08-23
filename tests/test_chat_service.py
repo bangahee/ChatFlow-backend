@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import pytest
 from sqlalchemy import select
@@ -71,6 +72,7 @@ def test_ai_failure_does_not_save_chat(db_session: Session) -> None:
 def test_commit_failure_rolls_back_and_session_remains_usable(
     db_session: Session,
     monkeypatch,
+    caplog,
 ) -> None:
     user = create_user(db_session)
     original_commit = db_session.commit
@@ -83,16 +85,26 @@ def test_commit_failure_rolls_back_and_session_remains_usable(
 
     monkeypatch.setattr(db_session, "commit", fail_commit)
 
-    with pytest.raises(ChatPersistenceError):
-        asyncio.run(
-            create_chat_reply(
-                db_session,
-                user,
-                "question",
-                "request-id",
-                fake_ai,
+    with caplog.at_level(logging.ERROR, logger="app.services.chat"):
+        with pytest.raises(ChatPersistenceError):
+            asyncio.run(
+                create_chat_reply(
+                    db_session,
+                    user,
+                    "question",
+                    "request-id",
+                    fake_ai,
+                )
             )
-        )
+
+    assert len(caplog.records) == 1
+    failure_record = caplog.records[0]
+    assert failure_record.event == "db_save_failed"
+    assert failure_record.request_id == "request-id"
+    assert failure_record.operation == "chat_create"
+    assert failure_record.error_type == "RuntimeError"
+    assert "question" not in caplog.text
+    assert "response" not in caplog.text
 
     monkeypatch.setattr(db_session, "commit", original_commit)
     assert db_session.scalar(select(User).where(User.id == user.id)) is not None

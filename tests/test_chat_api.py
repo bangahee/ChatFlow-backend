@@ -1,4 +1,6 @@
 from collections.abc import Callable
+import json
+import logging
 
 import pytest
 from fastapi import FastAPI
@@ -50,6 +52,7 @@ def test_chat_uses_default_unavailable_ai_service(
 def test_chat_success_is_saved_and_returned(
     client: TestClient,
     test_app: FastAPI,
+    caplog,
 ) -> None:
     token = register_and_login(client)
 
@@ -60,11 +63,13 @@ def test_chat_success_is_saved_and_returned(
         return "hello response"
 
     set_ai_responder(test_app, fake_ai)
-    response = client.post(
-        "/api/chat",
-        json={"question": "  hello  "},
-        headers=auth_headers(token),
-    )
+    caplog.clear()
+    with caplog.at_level(logging.INFO):
+        response = client.post(
+            "/api/chat",
+            json={"question": "  hello  "},
+            headers=auth_headers(token),
+        )
 
     assert response.status_code == 201
     body = response.json()
@@ -72,6 +77,31 @@ def test_chat_success_is_saved_and_returned(
     assert body["response"] == "hello response"
     assert body["created_at"].endswith("Z")
     assert body["request_id"]
+    assert response.headers["x-request-id"] == body["request_id"]
+
+    log_payloads = [
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if hasattr(record, "event")
+    ]
+    chat_events = [
+        payload for payload in log_payloads if payload.get("path") == "/api/chat"
+    ]
+    assert [payload["event"] for payload in chat_events] == [
+        "request_received",
+        "request_completed",
+    ]
+    db_event = next(
+        payload
+        for payload in log_payloads
+        if payload["event"] == "db_save_succeeded"
+    )
+    assert db_event["request_id"] == body["request_id"]
+    assert db_event["operation"] == "chat_create"
+    assert db_event["chat_id"] == body["id"]
+    assert chat_events[1]["request_id"] == body["request_id"]
+    assert chat_events[1]["status_code"] == 201
+    assert "hello response" not in caplog.text
 
     history = client.get("/api/me/chats", headers=auth_headers(token))
     assert history.status_code == 200

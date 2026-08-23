@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from types import SimpleNamespace
 
@@ -284,7 +285,11 @@ def test_logs_tracking_fields_without_sensitive_content(caplog) -> None:
         )
 
     assert result == secret_response
-    assert [record.getMessage() for record in caplog.records] == [
+    assert [record.event for record in caplog.records] == [
+        "ai_call_started",
+        "ai_call_succeeded",
+    ]
+    assert [json.loads(record.getMessage())["event"] for record in caplog.records] == [
         "ai_call_started",
         "ai_call_succeeded",
     ]
