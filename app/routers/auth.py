@@ -1,12 +1,13 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.database import get_db
 from app.dependencies import get_app_settings, get_current_user
 from app.models import User
+from app.observability import log_auth_failed
 from app.schemas.auth import (
     LoginRequest,
     RegisterRequest,
@@ -54,6 +55,7 @@ def register(
     status_code=status.HTTP_200_OK,
 )
 def login(
+    request: Request,
     payload: LoginRequest,
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_app_settings)],
@@ -61,6 +63,7 @@ def login(
     try:
         user = authenticate_user(db, payload.username, payload.password)
     except InvalidCredentialsError as exc:
+        log_auth_failed(request, "invalid_credentials")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="아이디 또는 비밀번호가 올바르지 않습니다.",

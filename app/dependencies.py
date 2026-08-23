@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.database import get_db
 from app.models import User
+from app.observability import log_auth_failed
 from app.repositories.user import get_user_by_username
 from app.services.ai import create_ai_responder
 from app.services.auth import TokenValidationError, decode_access_token
@@ -37,6 +38,7 @@ def unauthorized_exception() -> HTTPException:
 
 
 def get_current_user(
+    request: Request,
     credentials: Annotated[
         HTTPAuthorizationCredentials | None,
         Depends(bearer_scheme),
@@ -46,14 +48,18 @@ def get_current_user(
 ) -> User:
     """Resolve a valid bearer token to an existing database user."""
     if credentials is None or credentials.scheme.lower() != "bearer":
+        log_auth_failed(request, "missing_or_invalid_bearer")
         raise unauthorized_exception()
 
     try:
         username = decode_access_token(credentials.credentials, settings=settings)
     except TokenValidationError as exc:
+        log_auth_failed(request, "invalid_or_expired_token")
         raise unauthorized_exception() from exc
 
     user = get_user_by_username(db, username)
     if user is None:
+        log_auth_failed(request, "user_not_found")
         raise unauthorized_exception()
+    request.state.user_id = user.id
     return user

@@ -1,12 +1,11 @@
 from typing import Annotated
-from uuid import uuid4
-
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_ai_responder, get_current_user
 from app.models import User
+from app.observability import get_request_id
 from app.schemas.chat import (
     ChatHistoryResponse,
     ChatItem,
@@ -49,12 +48,13 @@ def map_ai_error(error: AIServiceError) -> HTTPException:
     status_code=status.HTTP_201_CREATED,
 )
 async def create_chat(
+    request: Request,
     payload: ChatRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
     ai_responder: Annotated[AIResponder, Depends(get_ai_responder)],
 ) -> ChatResponse:
-    request_id = str(uuid4())
+    request_id = get_request_id(request)
     try:
         chat = await create_chat_reply(
             db,

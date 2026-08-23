@@ -52,3 +52,4 @@ def test_allowed_origin_is_added_to_regular_response() -> None:
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == ALLOWED_ORIGIN
+    assert "x-request-id" in response.headers["access-control-expose-headers"].lower()
