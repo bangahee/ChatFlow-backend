@@ -1,5 +1,12 @@
 # 웹 기반 AI 챗봇 서비스 팀 개발 가이드
 
+> [!IMPORTANT]
+> 이 문서는 프로젝트 초기에 작성된 협업 가이드다. 최종 Backend 역할 분담과
+> 구현 책임은 `PLANS.md` 및 `README.md`의 A/B/C 구분을 기준으로 한다.
+> 최종 기준에서 박주영(A)은 FastAPI 기반·설정·인증, 김승우(B)는 DB·Repository·
+> Chat Service/API, 반가희(C)는 OpenAI·안정성·운영 로그·Health·CI·Railway·
+> 최종 통합을 담당한다.
+
 ## 1. 프로젝트 개요
 
 본 프로젝트는 **React 기반 Frontend와 FastAPI 기반 Backend를 분리하여 개발하고, AI API와 Database를 연동한 웹 기반 AI 챗봇 서비스**를 구현하는 것을 목표로 한다.
