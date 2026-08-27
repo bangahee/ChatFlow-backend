@@ -15,6 +15,7 @@ from app.schemas.auth import (
     TokenResponse,
     UserResponse,
 )
+from app.schemas.common import ErrorResponse, ValidationErrorResponse
 from app.services.auth import (
     DuplicateUsernameError,
     InvalidCredentialsError,
@@ -25,11 +26,43 @@ from app.services.auth import (
 
 router = APIRouter(tags=["auth"])
 
+_register_error_responses = {
+    400: {
+        "model": ErrorResponse,
+        "description": "이미 존재하는 아이디",
+    },
+    422: {
+        "model": ValidationErrorResponse,
+        "description": "아이디 또는 비밀번호 형식 오류",
+    },
+    500: {
+        "model": ErrorResponse,
+        "description": "예상하지 못한 데이터베이스 오류",
+    },
+}
+_login_error_responses = {
+    401: {
+        "model": ErrorResponse,
+        "description": "아이디 또는 비밀번호 불일치",
+    },
+    422: {
+        "model": ValidationErrorResponse,
+        "description": "로그인 요청 형식 오류",
+    },
+}
+_authentication_error_responses = {
+    401: {
+        "model": ErrorResponse,
+        "description": "Bearer Token 누락, 만료, 변조 또는 사용자 없음",
+    },
+}
+
 
 @router.post(
     "/api/auth/register",
     response_model=RegisterResponse,
     status_code=status.HTTP_201_CREATED,
+    responses=_register_error_responses,
 )
 def register(
     payload: RegisterRequest,
@@ -53,6 +86,7 @@ def register(
     "/api/auth/login",
     response_model=TokenResponse,
     status_code=status.HTTP_200_OK,
+    responses=_login_error_responses,
 )
 def login(
     request: Request,
@@ -81,6 +115,7 @@ def login(
     "/api/me",
     response_model=UserResponse,
     status_code=status.HTTP_200_OK,
+    responses=_authentication_error_responses,
 )
 def get_me(
     current_user: Annotated[User, Depends(get_current_user)],
