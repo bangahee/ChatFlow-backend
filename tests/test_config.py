@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from app.config import Settings, get_settings
 
 
@@ -27,6 +30,18 @@ def test_settings_read_environment_variables(monkeypatch) -> None:
         "environment-test-secret-key-xxxxxxxxxxxxxxxxxxxxxxxx"
     )
     assert settings.access_token_expire_minutes == 30
+
+
+def test_settings_require_secret_key(monkeypatch) -> None:
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+
+    with pytest.raises(ValidationError, match="secret_key"):
+        Settings(_env_file=None)
+
+
+def test_settings_reject_short_secret_key() -> None:
+    with pytest.raises(ValidationError, match="at least 32"):
+        Settings(_env_file=None, secret_key="too-short")
 
 
 def test_cors_origins_are_normalized_and_deduplicated() -> None:
