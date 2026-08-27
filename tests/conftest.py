@@ -1,3 +1,4 @@
+import os
 from collections.abc import Generator
 
 import pytest
@@ -5,8 +6,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.config import Settings
-from app.main import create_app
+os.environ.setdefault(
+    "SECRET_KEY",
+    "pytest-only-secret-key-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+)
+
+from app.config import Settings  # noqa: E402
+from app.main import create_app  # noqa: E402
 
 
 @pytest.fixture

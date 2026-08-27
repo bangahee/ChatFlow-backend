@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     )
 
     app_env: str = "development"
-    secret_key: SecretStr = SecretStr("change-me")
+    secret_key: SecretStr = Field(min_length=32)
     algorithm: str = "HS256"
     access_token_expire_minutes: int = Field(default=1440, gt=0)
     database_url: str = "sqlite:///./chatflow.db"
