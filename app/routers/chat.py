@@ -13,6 +13,7 @@ from app.schemas.chat import (
     ChatResponse,
     DeleteChatHistoryResponse,
 )
+from app.schemas.common import ErrorResponse, ValidationErrorResponse
 from app.services.ai import (
     AIServiceError,
     AITimeoutError,
@@ -27,6 +28,53 @@ from app.services.chat import (
 )
 
 router = APIRouter(tags=["chat"])
+
+_create_chat_error_responses = {
+    401: {
+        "model": ErrorResponse,
+        "description": "Bearer Token 누락, 만료, 변조 또는 사용자 없음",
+    },
+    422: {
+        "model": ValidationErrorResponse,
+        "description": "공백 질문 또는 500자 초과",
+    },
+    500: {
+        "model": ErrorResponse,
+        "description": "대화 기록 저장 실패",
+    },
+    502: {
+        "model": ErrorResponse,
+        "description": "OpenAI 연결 실패 또는 잘못된 응답",
+    },
+    503: {
+        "model": ErrorResponse,
+        "description": "OpenAI 요청 한도 또는 일시적 사용 불가",
+    },
+    504: {
+        "model": ErrorResponse,
+        "description": "OpenAI 호출 최종 타임아웃",
+    },
+}
+_list_chat_error_responses = {
+    401: {
+        "model": ErrorResponse,
+        "description": "Bearer Token 누락, 만료, 변조 또는 사용자 없음",
+    },
+    500: {
+        "model": ErrorResponse,
+        "description": "대화 기록 조회 실패",
+    },
+}
+_delete_chat_error_responses = {
+    401: {
+        "model": ErrorResponse,
+        "description": "Bearer Token 누락, 만료, 변조 또는 사용자 없음",
+    },
+    500: {
+        "model": ErrorResponse,
+        "description": "대화 기록 삭제 실패",
+    },
+}
 
 
 def map_ai_error(error: AIServiceError) -> HTTPException:
@@ -46,6 +94,7 @@ def map_ai_error(error: AIServiceError) -> HTTPException:
     "/api/chat",
     response_model=ChatResponse,
     status_code=status.HTTP_201_CREATED,
+    responses=_create_chat_error_responses,
 )
 async def create_chat(
     request: Request,
@@ -84,6 +133,7 @@ async def create_chat(
     "/api/me/chats",
     response_model=ChatHistoryResponse,
     status_code=status.HTTP_200_OK,
+    responses=_list_chat_error_responses,
 )
 def list_chats(
     db: Annotated[Session, Depends(get_db)],
@@ -105,6 +155,7 @@ def list_chats(
     "/api/me/chats",
     response_model=DeleteChatHistoryResponse,
     status_code=status.HTTP_200_OK,
+    responses=_delete_chat_error_responses,
 )
 def delete_chats(
     db: Annotated[Session, Depends(get_db)],
