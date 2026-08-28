@@ -5,7 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings, get_settings
 from app.database import create_db_engine, create_schema, create_session_factory
-from app.observability import request_logging_middleware
+from app.observability import (
+    configure_application_logging,
+    request_logging_middleware,
+)
 from app.routers.auth import router as auth_router
 from app.routers.chat import router as chat_router
 from app.routers.health import router as health_router
@@ -14,6 +17,7 @@ from app.routers.health import router as health_router
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Create and configure the ChatFlow API application."""
     app_settings = settings or get_settings()
+    configure_application_logging(app_settings.log_level)
     engine = create_db_engine(app_settings.database_url)
     session_factory = create_session_factory(engine)
 

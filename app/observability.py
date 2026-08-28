@@ -13,6 +13,11 @@ request_logger = logging.getLogger("app.request")
 auth_logger = logging.getLogger("app.auth")
 
 
+def configure_application_logging(level: str) -> None:
+    """Enable application logs without replacing Uvicorn's handlers."""
+    logging.getLogger("app").setLevel(level)
+
+
 def log_event(
     logger: logging.Logger,
     level: int,

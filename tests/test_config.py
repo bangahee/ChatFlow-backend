@@ -9,6 +9,7 @@ def test_settings_use_safe_defaults() -> None:
     settings = Settings(_env_file=None, secret_key=secret_key)
 
     assert settings.app_env == "development"
+    assert settings.log_level == "INFO"
     assert settings.secret_key.get_secret_value() == secret_key
     assert settings.access_token_expire_minutes == 1440
     assert settings.database_url == "sqlite:///./chatflow.db"
@@ -17,6 +18,7 @@ def test_settings_use_safe_defaults() -> None:
 
 def test_settings_read_environment_variables(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("LOG_LEVEL", "DEBUG")
     monkeypatch.setenv(
         "SECRET_KEY",
         "environment-test-secret-key-xxxxxxxxxxxxxxxxxxxxxxxx",
@@ -26,6 +28,7 @@ def test_settings_read_environment_variables(monkeypatch) -> None:
     settings = Settings(_env_file=None)
 
     assert settings.app_env == "test"
+    assert settings.log_level == "DEBUG"
     assert settings.secret_key.get_secret_value() == (
         "environment-test-secret-key-xxxxxxxxxxxxxxxxxxxxxxxx"
     )
@@ -42,6 +45,11 @@ def test_settings_require_secret_key(monkeypatch) -> None:
 def test_settings_reject_short_secret_key() -> None:
     with pytest.raises(ValidationError, match="at least 32"):
         Settings(_env_file=None, secret_key="too-short")
+
+
+def test_settings_reject_invalid_log_level() -> None:
+    with pytest.raises(ValidationError, match="log_level"):
+        Settings(_env_file=None, log_level="TRACE")
 
 
 def test_cors_origins_are_normalized_and_deduplicated() -> None:
