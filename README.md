@@ -316,7 +316,7 @@ DB, 실제 API Key 또는 실제 backoff 대기가 필요하지 않습니다.
 python -m pytest -q
 ```
 
-현재 구현 기준 결과는 `121 passed`입니다.
+현재 구현 기준 결과는 `122 passed`입니다.
 
 GitHub Actions는 `develop`·`main` 대상 Pull Request와 두 브랜치 Push마다
 Python 3.13에서 같은 명령을 실행합니다.
@@ -343,16 +343,29 @@ Persistent Volume을 `/data`에 Mount해야 SQLite 데이터가 재배포 후에
 | 항목 | 결과 |
 |---|---|
 | Railway Health | `GET /health` → `200 {"status":"ok"}` |
-| Vercel Frontend | `main` 커밋 `6d877da`, Production `Ready` |
+| Railway Backend | `main` 커밋 `9b94a87`(PR #20), Deployment `Successful` |
+| Vercel Frontend | `main` 커밋 `b2f7630`, Production `Ready` |
 | CORS | Vercel Origin의 Login Preflight `200` 및 허용 Origin Header 확인 |
 | 사용자 흐름 | 회원가입 `201` → 로그인 `200` → 실제 OpenAI Chat `201` → 기록 조회 성공 |
+| 관리자 흐름 | 관리자 로그인 → 사용자 목록·사용자별 대화 조회 `200` |
 | 인증 복원 | Frontend 새로고침 후 로그인 상태와 기록 유지 |
 | SQLite 영속성 | Railway Container 재시작 전·후 동일 사용자와 대화 수 `1` 유지 |
 | Frontend 오류 | 검증 중 Browser Console Error 없음 |
 
-영속성 검증 당시 Railway는 `main` 커밋 `f82fc97`을 실행했습니다. 운영 INFO 로그
-출력 보완은 PR #17을 통해 `develop` 커밋 `eb25497`에 반영됐으며, 최종 Release
-PR #13을 `main`에 병합하고 Railway를 재배포한 뒤 로그 이벤트를 다시 확인합니다.
+초기 SQLite 영속성 검증은 `main` 커밋 `f82fc97`에서 완료했습니다. 이후 PR #13,
+PR #17, 관리자 Release PR #20까지 `main`에 병합하고 Railway 재배포를 완료했습니다.
+최신 운영 점검에서 WARNING 이벤트는 확인됐지만 INFO 이벤트가 Railway에 출력되지
+않는 문제를 발견해, 앱 로거가 Uvicorn Handler를 재사용하도록 보완했습니다. 이
+변경을 `main`에 반영하고 재배포한 뒤 아래 이벤트가 동일 `request_id`를 공유하는지
+최종 확인합니다.
+
+```text
+request_received
+ai_call_started
+ai_call_succeeded
+db_save_succeeded
+request_completed
+```
 
 ## 브랜치 전략과 역할
 
