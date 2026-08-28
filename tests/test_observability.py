@@ -3,6 +3,8 @@ import logging
 
 from fastapi.testclient import TestClient
 
+from app.observability import configure_application_logging, log_event
+
 
 def event_payloads(caplog) -> list[dict]:
     return [
@@ -10,6 +12,32 @@ def event_payloads(caplog) -> list[dict]:
         for record in caplog.records
         if hasattr(record, "event")
     ]
+
+
+def test_application_logging_enables_info_events(caplog) -> None:
+    application_logger = logging.getLogger("app")
+    previous_level = application_logger.level
+
+    try:
+        configure_application_logging("INFO")
+        log_event(
+            logging.getLogger("app.production_check"),
+            logging.INFO,
+            "production_log_check",
+            request_id="production-request-id",
+        )
+    finally:
+        application_logger.setLevel(previous_level)
+
+    payload = next(
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if getattr(record, "event", None) == "production_log_check"
+    )
+    assert payload == {
+        "event": "production_log_check",
+        "request_id": "production-request-id",
+    }
 
 
 def test_request_logs_share_server_request_id_and_completion_status(
