@@ -21,7 +21,7 @@ Backend가 어떻게 동작하는지 확인한다. 과제 필수요건에 없는
 - 배포 대상: Railway
 - 통합 브랜치: `develop`
 - 운영 브랜치: `main`
-- 현재 전체 테스트: 94개
+- 현재 전체 테스트: 110개
 
 주요 사용자 흐름은 다음과 같다.
 
@@ -132,7 +132,8 @@ Copy-Item .env.example .env
 
 ```dotenv
 APP_ENV=development
-SECRET_KEY=change-me
+LOG_LEVEL=INFO
+SECRET_KEY=replace-with-a-long-random-secret
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=1440
 DATABASE_URL=sqlite:///./chatflow.db
@@ -161,8 +162,9 @@ OPENAI_API_KEY=<본인의 실제 Key>
 - JWT Access Token
 
 OpenAI Key가 비어 있어도 서버 실행, 회원가입, 로그인, 기록 조회와 전체 pytest는
-가능하다. 단, 실제 `POST /api/chat` 요청은 503을 반환한다. 자동 테스트는 Mock
-AI를 사용하므로 실제 Key가 필요 없다.
+가능하다. Key가 없는 환경에서만 실제 `POST /api/chat` 요청은 503을 반환한다.
+Production은 Railway의 서버 전용 Key로 실제 Responses API를 호출하며, 자동
+테스트는 Mock AI를 사용하므로 실제 Key가 필요 없다.
 
 ## 5. Backend 서버 실행
 
@@ -448,7 +450,7 @@ python -m pytest -q
 정상 기준:
 
 ```text
-94 passed
+110 passed
 ```
 
 테스트는 임시 SQLite DB와 Mock OpenAI Client를 사용하므로 실제 OpenAI Key와
@@ -644,12 +646,13 @@ Frontend에도 영향을 주므로 구현 전에 팀 합의를 받는다.
 
 ```dotenv
 APP_ENV=production
+LOG_LEVEL=INFO
 SECRET_KEY=<충분히 긴 임의 문자열>
 OPENAI_API_KEY=<server-side key>
 OPENAI_MODEL=gpt-5-nano
 OPENAI_TIMEOUT_SECONDS=20
 OPENAI_MAX_RETRIES=3
-CORS_ORIGINS=https://<실제-frontend-domain>
+CORS_ORIGINS=https://chat-flow-topaz.vercel.app
 DATABASE_URL=sqlite:////data/chatflow.db
 ```
 
