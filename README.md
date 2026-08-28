@@ -12,7 +12,7 @@ React 클라이언트와 분리 배포되는 FastAPI 기반 AI 챗봇 JSON API�
 - Backend Repository: [ChatFlow Backend](https://github.com/bangahee/ChatFlow-backend)
 - Frontend Repository: [ChatFlow Frontend](https://github.com/bangahee/ChatFlow)
 - Railway Backend: [chatflow-backend-production-b90c.up.railway.app](https://chatflow-backend-production-b90c.up.railway.app)
-- Vercel Frontend: 최종 배포 후 실제 URL을 이 문서에 추가합니다.
+- Vercel Frontend: [chat-flow-topaz.vercel.app](https://chat-flow-topaz.vercel.app)
 
 ## 문제, 대상 사용자, 핵심 시나리오
 
@@ -95,6 +95,7 @@ uvicorn app.main:app --reload
 | 변수 | 설명 | 예시/기본값 |
 |---|---|---|
 | `APP_ENV` | 실행 환경 | `development` |
+| `LOG_LEVEL` | 애플리케이션 로그 레벨 | `INFO` |
 | `SECRET_KEY` | JWT 서명용 비밀값 | Production에서는 충분히 긴 임의 문자열 |
 | `ALGORITHM` | JWT 알고리즘 | `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Access Token 유효 시간 | `1440` |
@@ -291,6 +292,8 @@ DB, 실제 API Key 또는 실제 backoff 대기가 필요하지 않습니다.
 python -m pytest -q
 ```
 
+현재 `develop` Release Candidate 기준 결과는 `110 passed`입니다.
+
 GitHub Actions는 `develop`·`main` 대상 Pull Request와 두 브랜치 Push마다
 Python 3.13에서 같은 명령을 실행합니다.
 
@@ -301,6 +304,7 @@ Python 3.13에서 같은 명령을 실행합니다.
 등록해야 합니다.
 
 - `APP_ENV=production`
+- `LOG_LEVEL=INFO`
 - `SECRET_KEY=<충분히 긴 임의 문자열>`
 - `OPENAI_API_KEY=<server-side key>`
 - `CORS_ORIGINS=<실제 Vercel Origin>`
@@ -309,6 +313,22 @@ Python 3.13에서 같은 명령을 실행합니다.
 Persistent Volume을 `/data`에 Mount해야 SQLite 데이터가 재배포 후에도
 유지됩니다. 구체적인 배포·재시작·데이터 영속성 검증과 증빙 항목은
 [Railway 배포 검증 문서](docs/RAILWAY_DEPLOYMENT.md)에 정리되어 있습니다.
+
+### 2026-08-28 Production 통합 검증
+
+| 항목 | 결과 |
+|---|---|
+| Railway Health | `GET /health` → `200 {"status":"ok"}` |
+| Vercel Frontend | `main` 커밋 `6d877da`, Production `Ready` |
+| CORS | Vercel Origin의 Login Preflight `200` 및 허용 Origin Header 확인 |
+| 사용자 흐름 | 회원가입 `201` → 로그인 `200` → 실제 OpenAI Chat `201` → 기록 조회 성공 |
+| 인증 복원 | Frontend 새로고침 후 로그인 상태와 기록 유지 |
+| SQLite 영속성 | Railway Container 재시작 전·후 동일 사용자와 대화 수 `1` 유지 |
+| Frontend 오류 | 검증 중 Browser Console Error 없음 |
+
+영속성 검증 당시 Railway는 `main` 커밋 `f82fc97`을 실행했습니다. 운영 INFO 로그
+출력 보완은 PR #17을 통해 `develop` 커밋 `eb25497`에 반영됐으며, 최종 Release
+PR #13을 `main`에 병합하고 Railway를 재배포한 뒤 로그 이벤트를 다시 확인합니다.
 
 ## 브랜치 전략과 역할
 
