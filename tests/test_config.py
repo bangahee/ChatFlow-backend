@@ -1,11 +1,16 @@
+import pytest
+from pydantic import ValidationError
+
 from app.config import Settings, get_settings
 
 
 def test_settings_use_safe_defaults() -> None:
-    settings = Settings(_env_file=None)
+    secret_key = "unit-test-secret-key-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    settings = Settings(_env_file=None, secret_key=secret_key)
 
     assert settings.app_env == "development"
-    assert settings.secret_key.get_secret_value() == "change-me"
+    assert settings.log_level == "INFO"
+    assert settings.secret_key.get_secret_value() == secret_key
     assert settings.access_token_expire_minutes == 1440
     assert settings.database_url == "sqlite:///./chatflow.db"
     assert settings.openai_api_key.get_secret_value() == ""
@@ -13,14 +18,38 @@ def test_settings_use_safe_defaults() -> None:
 
 def test_settings_read_environment_variables(monkeypatch) -> None:
     monkeypatch.setenv("APP_ENV", "test")
-    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+    monkeypatch.setenv(
+        "SECRET_KEY",
+        "environment-test-secret-key-xxxxxxxxxxxxxxxxxxxxxxxx",
+    )
     monkeypatch.setenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 
     settings = Settings(_env_file=None)
 
     assert settings.app_env == "test"
-    assert settings.secret_key.get_secret_value() == "test-secret"
+    assert settings.log_level == "DEBUG"
+    assert settings.secret_key.get_secret_value() == (
+        "environment-test-secret-key-xxxxxxxxxxxxxxxxxxxxxxxx"
+    )
     assert settings.access_token_expire_minutes == 30
+
+
+def test_settings_require_secret_key(monkeypatch) -> None:
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+
+    with pytest.raises(ValidationError, match="secret_key"):
+        Settings(_env_file=None)
+
+
+def test_settings_reject_short_secret_key() -> None:
+    with pytest.raises(ValidationError, match="at least 32"):
+        Settings(_env_file=None, secret_key="too-short")
+
+
+def test_settings_reject_invalid_log_level() -> None:
+    with pytest.raises(ValidationError, match="log_level"):
+        Settings(_env_file=None, log_level="TRACE")
 
 
 def test_cors_origins_are_normalized_and_deduplicated() -> None:
@@ -39,15 +68,16 @@ def test_cors_origins_are_normalized_and_deduplicated() -> None:
 
 
 def test_secret_values_are_hidden_from_repr() -> None:
+    secret_key = "super-secret-key-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
     settings = Settings(
         _env_file=None,
-        secret_key="super-secret-key",
+        secret_key=secret_key,
         openai_api_key="super-secret-openai-key",
     )
 
     representation = repr(settings)
 
-    assert "super-secret-key" not in representation
+    assert secret_key not in representation
     assert "super-secret-openai-key" not in representation
 
 

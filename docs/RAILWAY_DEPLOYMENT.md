@@ -11,12 +11,13 @@ Production Secret 등록과 SQLite Volume 영속성 검증 절차를 정의한�
 
 ```dotenv
 APP_ENV=production
+LOG_LEVEL=INFO
 SECRET_KEY=<충분히 긴 임의 문자열>
 OPENAI_API_KEY=<OpenAI server-side key>
 OPENAI_MODEL=gpt-5-nano
 OPENAI_TIMEOUT_SECONDS=20
 OPENAI_MAX_RETRIES=3
-CORS_ORIGINS=https://<frontend-domain>
+CORS_ORIGINS=https://chat-flow-topaz.vercel.app
 DATABASE_URL=sqlite:////data/chatflow.db
 ```
 
@@ -90,7 +91,34 @@ API Key, JWT, 비밀번호, 질문과 AI 응답 본문이 로그에 없는지도
 3. Browser에서 회원가입 → 로그인 → 질문 → 기록 조회 → 삭제를 확인한다.
 4. 허용되지 않은 Origin에서 CORS 요청이 거부되는지 확인한다.
 
-## 6. 제출 증빙 기록
+## 6. 실제 검증 결과 (2026-08-28 KST)
+
+| 항목 | 검증 결과 |
+|---|---|
+| Backend URL | `https://chatflow-backend-production-b90c.up.railway.app` |
+| Frontend URL | `https://chat-flow-topaz.vercel.app` |
+| Frontend 배포 | `main` 커밋 `6d877da`, Vercel `Ready` |
+| Health | Railway 재시작 후 `200 {"status":"ok"}` |
+| CORS | Frontend Origin Preflight `200`, 허용 Origin Header 일치 |
+| 통합 흐름 | 회원가입 `201`, 로그인 `200`, 실제 Chat `201`, 기록 조회 성공 |
+| 인증 복원 | Frontend 새로고침 후 인증과 기록 유지 |
+| DB 영속성 | Railway Container 재시작 전·후 대화 수 `1` 유지 |
+| Frontend 오류 | Browser Console Error 없음 |
+
+영속성 검증 시 Railway 배포 Commit은 `f82fc97`이었다. 운영 INFO 로그 출력
+보완은 Backend PR #17과 `develop` Commit `eb25497`에 포함되어 있다. 최종
+Release PR #13 병합 및 Railway 재배포 후 아래 이벤트를 동일 `request_id`로
+확인하는 절차만 남아 있다.
+
+```text
+request_received
+ai_call_started
+ai_call_succeeded
+db_save_succeeded
+request_completed
+```
+
+## 7. 제출 증빙 기록
 
 최종 README 또는 제출 문서에 다음을 기록한다.
 

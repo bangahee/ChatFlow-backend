@@ -7,6 +7,13 @@ React 클라이언트와 분리 배포되는 FastAPI 기반 AI 챗봇 JSON API�
 설치부터 Swagger, Frontend 연동, 테스트와 배포 흐름까지 정리한
 [Backend A–Z 사용 가이드](docs/BACKEND_USAGE_GUIDE.md)를 참고해 주세요.
 
+## 저장소와 배포 주소
+
+- Backend Repository: [ChatFlow Backend](https://github.com/bangahee/ChatFlow-backend)
+- Frontend Repository: [ChatFlow Frontend](https://github.com/bangahee/ChatFlow)
+- Railway Backend: [chatflow-backend-production-b90c.up.railway.app](https://chatflow-backend-production-b90c.up.railway.app)
+- Vercel Frontend: [chat-flow-topaz.vercel.app](https://chat-flow-topaz.vercel.app)
+
 ## 문제, 대상 사용자, 핵심 시나리오
 
 - 문제: 단순 AI 호출만으로는 사용자 인증, 대화 연속성, 기록 보관과 장애 추적이
@@ -42,6 +49,31 @@ Router는 HTTP 계약, Service는 업무 흐름, Repository는 SQLAlchemy 쿼리
 - 요청 수신부터 AI 호출과 DB 저장, 요청 완료까지 동일 `request_id` 추적
 - `/health`, pytest, GitHub Actions, Railway Config as Code
 
+## Frontend UI와 인증 상태 증빙
+
+웹 UI는 별도 [Frontend Repository](https://github.com/bangahee/ChatFlow)에서
+관리합니다. 주요 화면과 자동 검증 위치는 다음과 같습니다.
+
+| 평가 흐름 | 구현 및 검증 |
+|---|---|
+| 회원가입 | [RegisterPage.tsx](https://github.com/bangahee/ChatFlow/blob/main/src/pages/RegisterPage.tsx) |
+| 로그인 | [LoginPage.tsx](https://github.com/bangahee/ChatFlow/blob/main/src/pages/LoginPage.tsx) |
+| 질문 입력·AI 응답 | [ChatPage.tsx](https://github.com/bangahee/ChatFlow/blob/main/src/pages/ChatPage.tsx) |
+| 내 대화 기록 조회·삭제 | [ChatPage.tsx](https://github.com/bangahee/ChatFlow/blob/main/src/pages/ChatPage.tsx) |
+| 사용자 흐름 테스트 | [App.test.tsx](https://github.com/bangahee/ChatFlow/blob/main/src/App.test.tsx) |
+
+이 프로젝트는 서버 메모리에 로그인 상태를 저장하는 Stateful Session 대신
+Stateless JWT Bearer 인증을 사용합니다. 로그인 성공 시 Frontend가 Access Token을
+저장하고, 새로고침 시 `GET /api/me`로 사용자와 만료 여부를 다시 확인합니다.
+보호 API가 `401`을 반환하면 Token을 제거하고 로그인 화면으로 이동합니다. 따라서
+서버를 여러 Instance로 확장해도 별도 Session Store 없이 동일한 인증 정책을
+유지할 수 있습니다.
+
+과제의 사용자 기준 로그 조회·추적 요구사항은 인증된 `GET /api/me/chats`와
+Frontend의 내 대화 기록 화면으로 충족합니다. 관리자 권한과 전체 사용자 조회는
+필수 요구사항이 아니므로 최소 권한 원칙에 따라 공개 API 범위에 포함하지
+않았습니다.
+
 ## 로컬 실행
 
 Python 3.13 환경에서 실행합니다.
@@ -63,6 +95,7 @@ uvicorn app.main:app --reload
 | 변수 | 설명 | 예시/기본값 |
 |---|---|---|
 | `APP_ENV` | 실행 환경 | `development` |
+| `LOG_LEVEL` | 애플리케이션 로그 레벨 | `INFO` |
 | `SECRET_KEY` | JWT 서명용 비밀값 | Production에서는 충분히 긴 임의 문자열 |
 | `ALGORITHM` | JWT 알고리즘 | `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Access Token 유효 시간 | `1440` |
@@ -246,6 +279,10 @@ request_received
 오류 타입만 기록합니다. 비밀번호, JWT, 질문·응답 본문, OpenAI API Key는
 기록하지 않습니다.
 
+- DB 저장 성공·실패 구현: [app/services/chat.py](https://github.com/bangahee/ChatFlow-backend/blob/main/app/services/chat.py)
+- DB 저장 실패와 rollback 검증: [tests/test_chat_service.py](https://github.com/bangahee/ChatFlow-backend/blob/main/tests/test_chat_service.py)
+- 요청·인증 로그 검증: [tests/test_observability.py](https://github.com/bangahee/ChatFlow-backend/blob/main/tests/test_observability.py)
+
 ## 테스트와 CI
 
 테스트는 각 실행마다 임시 SQLite 파일과 Mock OpenAI Client를 사용하므로 운영
@@ -254,6 +291,8 @@ DB, 실제 API Key 또는 실제 backoff 대기가 필요하지 않습니다.
 ```bash
 python -m pytest -q
 ```
+
+현재 `develop` Release Candidate 기준 결과는 `110 passed`입니다.
 
 GitHub Actions는 `develop`·`main` 대상 Pull Request와 두 브랜치 Push마다
 Python 3.13에서 같은 명령을 실행합니다.
@@ -265,6 +304,7 @@ Python 3.13에서 같은 명령을 실행합니다.
 등록해야 합니다.
 
 - `APP_ENV=production`
+- `LOG_LEVEL=INFO`
 - `SECRET_KEY=<충분히 긴 임의 문자열>`
 - `OPENAI_API_KEY=<server-side key>`
 - `CORS_ORIGINS=<실제 Vercel Origin>`
@@ -273,6 +313,22 @@ Python 3.13에서 같은 명령을 실행합니다.
 Persistent Volume을 `/data`에 Mount해야 SQLite 데이터가 재배포 후에도
 유지됩니다. 구체적인 배포·재시작·데이터 영속성 검증과 증빙 항목은
 [Railway 배포 검증 문서](docs/RAILWAY_DEPLOYMENT.md)에 정리되어 있습니다.
+
+### 2026-08-28 Production 통합 검증
+
+| 항목 | 결과 |
+|---|---|
+| Railway Health | `GET /health` → `200 {"status":"ok"}` |
+| Vercel Frontend | `main` 커밋 `6d877da`, Production `Ready` |
+| CORS | Vercel Origin의 Login Preflight `200` 및 허용 Origin Header 확인 |
+| 사용자 흐름 | 회원가입 `201` → 로그인 `200` → 실제 OpenAI Chat `201` → 기록 조회 성공 |
+| 인증 복원 | Frontend 새로고침 후 로그인 상태와 기록 유지 |
+| SQLite 영속성 | Railway Container 재시작 전·후 동일 사용자와 대화 수 `1` 유지 |
+| Frontend 오류 | 검증 중 Browser Console Error 없음 |
+
+영속성 검증 당시 Railway는 `main` 커밋 `f82fc97`을 실행했습니다. 운영 INFO 로그
+출력 보완은 PR #17을 통해 `develop` 커밋 `eb25497`에 반영됐으며, 최종 Release
+PR #13을 `main`에 병합하고 Railway를 재배포한 뒤 로그 이벤트를 다시 확인합니다.
 
 ## 브랜치 전략과 역할
 
@@ -290,3 +346,17 @@ feature branch → Pull Request/review → develop → final PR → main
 
 `PLANS.md`의 A/B/C 분담을 백엔드 역할 기준으로 사용합니다. Frontend는 별도
 저장소에서 관리합니다.
+
+### 주요 PR과 Git 기여 증빙
+
+| 팀원 | 대표 작업 및 PR |
+|---|---|
+| 박주영 | [Backend PR #4 로그인 기본 작업](https://github.com/bangahee/ChatFlow-backend/pull/4), [Backend PR #11 Swagger·OpenAPI 검증](https://github.com/bangahee/ChatFlow-backend/pull/11) |
+| 김승우 | [Backend PR #5 DB·Chat API](https://github.com/bangahee/ChatFlow-backend/pull/5), [Frontend PR #3 React Frontend 통합](https://github.com/bangahee/ChatFlow/pull/3) |
+| 반가희 | [Backend PR #6 OpenAI·안정성](https://github.com/bangahee/ChatFlow-backend/pull/6), [Backend PR #7 운영 로그·통합 검증](https://github.com/bangahee/ChatFlow-backend/pull/7), [Frontend PR #7 역할·기여 정합성](https://github.com/bangahee/ChatFlow/pull/7) |
+| 김두운 | [Frontend PR #3 React Frontend 통합](https://github.com/bangahee/ChatFlow/pull/3) 및 해당 PR의 UI·UX·반응형·사용성 커밋 |
+
+두 저장소 모두 기능 Branch → Pull Request → 다른 팀원 Review → `develop`
+Merge → `develop → main` Release PR 흐름을 사용합니다. 세부 Commit은 각 PR의
+Commits 탭에서 작성자별로 확인할 수 있으며, 자동 생성된 Merge Commit을 제외한
+유의미한 작업 Commit을 개인별 기여 기준으로 사용합니다.
