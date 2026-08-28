@@ -97,18 +97,21 @@ API Key, JWT, 비밀번호, 질문과 AI 응답 본문이 로그에 없는지도
 |---|---|
 | Backend URL | `https://chatflow-backend-production-b90c.up.railway.app` |
 | Frontend URL | `https://chat-flow-topaz.vercel.app` |
-| Frontend 배포 | `main` 커밋 `6d877da`, Vercel `Ready` |
+| Backend 배포 | `main` 커밋 `9b94a87`(PR #20), Railway `Successful` |
+| Frontend 배포 | `main` 커밋 `b2f7630`, Vercel `Ready` |
 | Health | Railway 재시작 후 `200 {"status":"ok"}` |
 | CORS | Frontend Origin Preflight `200`, 허용 Origin Header 일치 |
 | 통합 흐름 | 회원가입 `201`, 로그인 `200`, 실제 Chat `201`, 기록 조회 성공 |
+| 관리자 흐름 | 관리자 로그인, 사용자 목록·사용자별 대화 조회 `200` |
 | 인증 복원 | Frontend 새로고침 후 인증과 기록 유지 |
 | DB 영속성 | Railway Container 재시작 전·후 대화 수 `1` 유지 |
 | Frontend 오류 | Browser Console Error 없음 |
 
-영속성 검증 시 Railway 배포 Commit은 `f82fc97`이었다. 운영 INFO 로그 출력
-보완은 Backend PR #17과 `develop` Commit `eb25497`에 포함되어 있다. 최종
-Release PR #13 병합 및 Railway 재배포 후 아래 이벤트를 동일 `request_id`로
-확인하는 절차만 남아 있다.
+초기 영속성 검증은 Railway 배포 Commit `f82fc97`에서 완료했다. 이후 Backend
+PR #13, PR #17과 관리자 Release PR #20을 `main`에 병합하고 재배포했다. 최신
+운영 점검에서 WARNING 이벤트는 확인됐지만 INFO 이벤트가 Railway에 출력되지
+않아, 앱 로거가 Uvicorn Handler를 재사용하도록 보완했다. 변경을 `main`에
+반영하고 재배포한 뒤 아래 이벤트를 동일 `request_id`로 최종 확인한다.
 
 ```text
 request_received
