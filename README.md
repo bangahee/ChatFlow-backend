@@ -43,6 +43,7 @@ Router는 HTTP 계약, Service는 업무 흐름, Repository는 SQLAlchemy 쿼리
 
 - Argon2 비밀번호 해시와 JWT Bearer 인증
 - 사용자별 Chat 기록 저장·조회·삭제
+- 관리자 전용 일반 사용자 목록 및 사용자별 전체 대화 조회(조회 전용)
 - 최근 대화 최대 3개를 과거→최신 순서로 OpenAI에 전달
 - OpenAI timeout, rate limit, 연결 오류와 5xx 재시도
 - 오류 유형별 502, 503, 504 응답과 실패 응답 미저장
@@ -69,10 +70,9 @@ Stateless JWT Bearer 인증을 사용합니다. 로그인 성공 시 Frontend가
 서버를 여러 Instance로 확장해도 별도 Session Store 없이 동일한 인증 정책을
 유지할 수 있습니다.
 
-과제의 사용자 기준 로그 조회·추적 요구사항은 인증된 `GET /api/me/chats`와
-Frontend의 내 대화 기록 화면으로 충족합니다. 관리자 권한과 전체 사용자 조회는
-필수 요구사항이 아니므로 최소 권한 원칙에 따라 공개 API 범위에 포함하지
-않았습니다.
+일반 사용자의 기록 조회·추적은 인증된 `GET /api/me/chats`와 Frontend의 내 대화
+기록 화면으로 제한됩니다. 별도 관리자 권한을 가진 계정은 채팅 API를 사용할 수
+없고, 관리자 API를 통해 일반 사용자와 선택 사용자의 대화 기록만 조회할 수 있습니다.
 
 ## 로컬 실행
 
@@ -118,9 +118,11 @@ uvicorn app.main:app --reload
 | `POST` | `/api/auth/register` | X | 201 | 회원가입 |
 | `POST` | `/api/auth/login` | X | 200 | JWT 발급 |
 | `GET` | `/api/me` | O | 200 | 현재 사용자 조회 |
-| `POST` | `/api/chat` | O | 201 | AI 응답 생성 및 저장 |
-| `GET` | `/api/me/chats` | O | 200 | 내 대화 기록 조회 |
-| `DELETE` | `/api/me/chats` | O | 200 | 내 대화 기록 전체 삭제 |
+| `POST` | `/api/chat` | 일반 사용자 | 201 | AI 응답 생성 및 저장 |
+| `GET` | `/api/me/chats` | 일반 사용자 | 200 | 내 대화 기록 조회 |
+| `DELETE` | `/api/me/chats` | 일반 사용자 | 200 | 내 대화 기록 전체 삭제 |
+| `GET` | `/api/admin/users` | 관리자 | 200 | 일반 사용자와 대화 수 조회 |
+| `GET` | `/api/admin/users/{user_id}/chats` | 관리자 | 200 | 일반 사용자의 전체 대화 조회 |
 
 ### Health Check
 
@@ -141,7 +143,7 @@ curl -X POST http://localhost:8000/api/auth/register \
 ```
 
 ```json
-{"id":1,"username":"chat_user","created_at":"2026-08-23T01:00:00Z"}
+{"id":1,"username":"chat_user","is_admin":false,"created_at":"2026-08-23T01:00:00Z"}
 ```
 
 ```bash
@@ -211,6 +213,7 @@ curl -X DELETE http://localhost:8000/api/me/chats \
 |---:|---|
 | 400 | 중복 아이디 |
 | 401 | 로그인 실패 또는 없거나 만료·변조된 Token |
+| 403 | 관리자 계정의 사용자 채팅 API 접근 또는 관리자 권한 없음 |
 | 422 | 잘못된 사용자 입력, 공백 질문, 500자 초과 |
 | 500 | 회원가입 또는 Chat DB 처리 실패 |
 | 502 | OpenAI 연결 또는 응답 형식 오류 |
@@ -218,6 +221,26 @@ curl -X DELETE http://localhost:8000/api/me/chats \
 | 504 | OpenAI 최종 timeout |
 
 처리 가능한 오류는 `{"detail":"오류 설명"}` 형태입니다.
+
+## 관리자 조회
+
+관리자는 `/api/me` 응답의 `is_admin`이 `true`인 계정만 사용할 수 있습니다. 일반
+회원가입으로는 관리자 권한이 부여되지 않으며, 권한을 변경하는 HTTP API도 제공하지
+않습니다.
+
+기존 사용자를 최초 관리자로 지정할 때는 Backend와 같은 환경 변수 및 DB를 사용하는
+운영 Shell에서 아래 명령을 한 번 실행합니다. 대상 사용자는 먼저 회원가입되어 있어야
+하며, 명령을 다시 실행해도 안전합니다.
+
+```bash
+python -m scripts.grant_admin <username>
+```
+
+관리자는 채팅용 계정이 아닌 운영 전용 계정입니다. `POST /api/chat` 및
+`GET`·`DELETE /api/me/chats`는 관리자 계정에 `403`을 반환합니다. 관리자 목록과
+대화 상세에서는 모든 관리자 계정을 제외하며, 관리자 계정을 대상으로 한 대화 조회는
+`404`를 반환합니다. 조회 API에는 검색, 페이지네이션, 수정, 삭제, 내보내기 기능이
+없으며, 대화 본문은 서버 로그에 기록하지 않습니다.
 
 ## Database
 
@@ -228,8 +251,8 @@ users                         chat_logs
 ├── id PK                 ┌── id PK
 ├── username UNIQUE       ├── user_id FK → users.id
 ├── hashed_password       ├── question
-└── created_at            ├── response
-                          └── created_at
+├── is_admin              ├── response
+└── created_at            └── created_at
 ```
 
 | Table | Field | Type/제약 | 설명 |
@@ -237,6 +260,7 @@ users                         chat_logs
 | `users` | `id` | PK | 사용자 식별자 |
 | `users` | `username` | `VARCHAR(50)`, UNIQUE, INDEX, NOT NULL | 로그인 아이디 |
 | `users` | `hashed_password` | `VARCHAR(255)`, NOT NULL | Argon2 해시 |
+| `users` | `is_admin` | `BOOLEAN`, NOT NULL, 기본값 `false` | 관리자 조회 권한 |
 | `users` | `created_at` | UTC datetime, NOT NULL | 가입 시각 |
 | `chat_logs` | `id` | PK | 대화 식별자 |
 | `chat_logs` | `user_id` | FK, INDEX, NOT NULL | 대화 소유 사용자 |
@@ -292,7 +316,7 @@ DB, 실제 API Key 또는 실제 backoff 대기가 필요하지 않습니다.
 python -m pytest -q
 ```
 
-현재 `develop` Release Candidate 기준 결과는 `110 passed`입니다.
+현재 구현 기준 결과는 `121 passed`입니다.
 
 GitHub Actions는 `develop`·`main` 대상 Pull Request와 두 브랜치 Push마다
 Python 3.13에서 같은 명령을 실행합니다.

@@ -5,8 +5,10 @@ import logging
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.dependencies import get_ai_responder
+from app.models import User
 from app.services.ai import AITimeoutError, AIUnavailableError, AIUpstreamError
 
 
@@ -23,6 +25,14 @@ def register_and_login(
 
 def auth_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def grant_admin(test_app: FastAPI, username: str) -> None:
+    with test_app.state.session_factory() as db:
+        user = db.scalar(select(User).where(User.username == username))
+        assert user is not None
+        user.is_admin = True
+        db.commit()
 
 
 def set_ai_responder(test_app: FastAPI, responder: Callable) -> None:
@@ -47,6 +57,30 @@ def test_chat_uses_default_unavailable_ai_service(
     )
 
     assert response.status_code == 503
+
+
+def test_admin_cannot_use_user_chat_endpoints(
+    client: TestClient,
+    test_app: FastAPI,
+) -> None:
+    token = register_and_login(client, "admin_user")
+    grant_admin(test_app, "admin_user")
+
+    responses = [
+        client.post(
+            "/api/chat",
+            json={"question": "관리자 질문"},
+            headers=auth_headers(token),
+        ),
+        client.get("/api/me/chats", headers=auth_headers(token)),
+        client.delete("/api/me/chats", headers=auth_headers(token)),
+    ]
+
+    for response in responses:
+        assert response.status_code == 403
+        assert response.json() == {
+            "detail": "관리자 계정은 채팅을 사용할 수 없습니다."
+        }
 
 
 def test_chat_success_is_saved_and_returned(
