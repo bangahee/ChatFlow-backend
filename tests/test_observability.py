@@ -1,5 +1,6 @@
 import json
 import logging
+from io import StringIO
 
 from fastapi.testclient import TestClient
 
@@ -35,6 +36,48 @@ def test_application_logging_enables_info_events(caplog) -> None:
         if getattr(record, "event", None) == "production_log_check"
     )
     assert payload == {
+        "event": "production_log_check",
+        "request_id": "production-request-id",
+    }
+
+
+def test_application_logging_reuses_uvicorn_handlers() -> None:
+    application_logger = logging.getLogger("app")
+    uvicorn_logger = logging.getLogger("uvicorn.error")
+    uvicorn_parent_logger = logging.getLogger("uvicorn")
+    previous_application_handlers = application_logger.handlers[:]
+    previous_application_level = application_logger.level
+    previous_application_propagate = application_logger.propagate
+    previous_uvicorn_handlers = uvicorn_logger.handlers[:]
+    previous_uvicorn_propagate = uvicorn_logger.propagate
+    previous_uvicorn_parent_handlers = uvicorn_parent_logger.handlers[:]
+    output = StringIO()
+    handler = logging.StreamHandler(output)
+
+    try:
+        uvicorn_logger.handlers = []
+        uvicorn_logger.propagate = True
+        uvicorn_parent_logger.handlers = [handler]
+        configure_application_logging("INFO")
+        configured_handlers = application_logger.handlers[:]
+        configured_propagate = application_logger.propagate
+        log_event(
+            logging.getLogger("app.production_check"),
+            logging.INFO,
+            "production_log_check",
+            request_id="production-request-id",
+        )
+    finally:
+        application_logger.handlers = previous_application_handlers
+        application_logger.setLevel(previous_application_level)
+        application_logger.propagate = previous_application_propagate
+        uvicorn_logger.handlers = previous_uvicorn_handlers
+        uvicorn_logger.propagate = previous_uvicorn_propagate
+        uvicorn_parent_logger.handlers = previous_uvicorn_parent_handlers
+
+    assert configured_handlers == [handler]
+    assert configured_propagate is False
+    assert json.loads(output.getvalue()) == {
         "event": "production_log_check",
         "request_id": "production-request-id",
     }

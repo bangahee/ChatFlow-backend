@@ -14,8 +14,26 @@ auth_logger = logging.getLogger("app.auth")
 
 
 def configure_application_logging(level: str) -> None:
-    """Enable application logs without replacing Uvicorn's handlers."""
-    logging.getLogger("app").setLevel(level)
+    """Enable application logs and route them through Uvicorn's handlers."""
+    application_logger = logging.getLogger("app")
+    application_logger.setLevel(level)
+
+    # Uvicorn configures its handlers before importing ``app.main:app`` in
+    # production. Reusing those handlers makes INFO application events visible
+    # in Railway without adding a second formatter or duplicating log lines.
+    uvicorn_logger = logging.getLogger("uvicorn.error")
+    uvicorn_handlers = uvicorn_logger.handlers
+    while (
+        not uvicorn_handlers
+        and uvicorn_logger.propagate
+        and uvicorn_logger.parent is not None
+    ):
+        uvicorn_logger = uvicorn_logger.parent
+        uvicorn_handlers = uvicorn_logger.handlers
+
+    if uvicorn_handlers:
+        application_logger.handlers = list(uvicorn_handlers)
+        application_logger.propagate = False
 
 
 def log_event(
