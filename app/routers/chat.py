@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_ai_responder, get_current_user
+from app.dependencies import get_ai_responder, get_current_chat_user
 from app.models import User
 from app.observability import get_request_id
 from app.schemas.chat import (
@@ -34,6 +34,10 @@ _create_chat_error_responses = {
         "model": ErrorResponse,
         "description": "Bearer Token 누락, 만료, 변조 또는 사용자 없음",
     },
+    403: {
+        "model": ErrorResponse,
+        "description": "관리자 계정의 채팅 사용 불가",
+    },
     422: {
         "model": ValidationErrorResponse,
         "description": "공백 질문 또는 500자 초과",
@@ -60,6 +64,10 @@ _list_chat_error_responses = {
         "model": ErrorResponse,
         "description": "Bearer Token 누락, 만료, 변조 또는 사용자 없음",
     },
+    403: {
+        "model": ErrorResponse,
+        "description": "관리자 계정의 채팅 사용 불가",
+    },
     500: {
         "model": ErrorResponse,
         "description": "대화 기록 조회 실패",
@@ -69,6 +77,10 @@ _delete_chat_error_responses = {
     401: {
         "model": ErrorResponse,
         "description": "Bearer Token 누락, 만료, 변조 또는 사용자 없음",
+    },
+    403: {
+        "model": ErrorResponse,
+        "description": "관리자 계정의 채팅 사용 불가",
     },
     500: {
         "model": ErrorResponse,
@@ -100,7 +112,7 @@ async def create_chat(
     request: Request,
     payload: ChatRequest,
     db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_chat_user)],
     ai_responder: Annotated[AIResponder, Depends(get_ai_responder)],
 ) -> ChatResponse:
     request_id = get_request_id(request)
@@ -137,7 +149,7 @@ async def create_chat(
 )
 def list_chats(
     db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_chat_user)],
 ) -> ChatHistoryResponse:
     try:
         chats = get_chat_history(db, current_user)
@@ -159,7 +171,7 @@ def list_chats(
 )
 def delete_chats(
     db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_chat_user)],
 ) -> DeleteChatHistoryResponse:
     try:
         deleted_count = clear_chat_history(db, current_user)

@@ -34,6 +34,7 @@ def test_register_creates_hashed_user(client: TestClient, test_app) -> None:
 
     assert response.status_code == 201
     assert response.json()["username"] == "chat_user"
+    assert response.json()["is_admin"] is False
     assert response.json()["created_at"].endswith("Z")
 
     with test_app.state.session_factory() as db:
@@ -93,6 +94,7 @@ def test_me_returns_token_user(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json()["username"] == "chat_user"
+    assert response.json()["is_admin"] is False
 
 
 def test_me_rejects_tampered_token(client: TestClient) -> None:
