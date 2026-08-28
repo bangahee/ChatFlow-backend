@@ -21,7 +21,7 @@ Backend가 어떻게 동작하는지 확인한다. 과제 필수요건에 없는
 - 배포 대상: Railway
 - 통합 브랜치: `develop`
 - 운영 브랜치: `main`
-- 현재 전체 테스트: 110개
+- 현재 전체 테스트: 122개
 
 주요 사용자 흐름은 다음과 같다.
 
@@ -449,7 +449,7 @@ python -m pytest -q
 정상 기준:
 
 ```text
-110 passed
+122 passed
 ```
 
 테스트는 임시 SQLite DB와 Mock OpenAI Client를 사용하므로 실제 OpenAI Key와
