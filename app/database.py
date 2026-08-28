@@ -1,7 +1,7 @@
 from collections.abc import Generator
 
 from fastapi import Request
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine, event, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -41,10 +41,31 @@ def create_session_factory(engine: Engine) -> sessionmaker[Session]:
 
 
 def create_schema(engine: Engine) -> None:
-    """Create the MVP database schema for an empty database."""
+    """Create the schema and apply the supported SQLite compatibility upgrade."""
     from app import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _ensure_user_admin_column(engine)
+
+
+def _ensure_user_admin_column(engine: Engine) -> None:
+    """Add the persisted admin role to legacy SQLite databases exactly once."""
+    if engine.dialect.name != "sqlite":
+        return
+
+    user_columns = {
+        column["name"] for column in inspect(engine).get_columns("users")
+    }
+    if "is_admin" in user_columns:
+        return
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "ALTER TABLE users "
+                "ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0"
+            )
+        )
 
 
 def get_db(request: Request) -> Generator[Session, None, None]:

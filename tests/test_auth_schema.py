@@ -96,6 +96,7 @@ def test_register_response_serializes_created_at_as_utc() -> None:
     assert response.model_dump(mode="json") == {
         "id": 1,
         "username": "chat_user",
+        "is_admin": False,
         "created_at": "2026-08-20T03:00:00Z",
     }
 

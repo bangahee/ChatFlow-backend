@@ -40,6 +40,7 @@ class UserResponse(BaseModel):
 
     id: int
     username: str
+    is_admin: bool = False
     created_at: datetime
 
     @field_validator("created_at")

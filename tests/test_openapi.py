@@ -6,9 +6,15 @@ ERROR_RESPONSES = [
     ("/api/auth/register", "post", {"400", "422", "500"}),
     ("/api/auth/login", "post", {"401", "422"}),
     ("/api/me", "get", {"401"}),
-    ("/api/chat", "post", {"401", "422", "500", "502", "503", "504"}),
-    ("/api/me/chats", "get", {"401", "500"}),
-    ("/api/me/chats", "delete", {"401", "500"}),
+    ("/api/chat", "post", {"401", "403", "422", "500", "502", "503", "504"}),
+    ("/api/me/chats", "get", {"401", "403", "500"}),
+    ("/api/me/chats", "delete", {"401", "403", "500"}),
+    ("/api/admin/users", "get", {"401", "403", "500"}),
+    (
+        "/api/admin/users/{user_id}/chats",
+        "get",
+        {"401", "403", "404", "422", "500"},
+    ),
 ]
 
 

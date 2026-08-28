@@ -1,7 +1,10 @@
+import sqlite3
+
 from fastapi.testclient import TestClient
-from sqlalchemy import inspect, select
+from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
+from app.database import create_db_engine, create_schema
 from app.models import ChatLog, User
 from app.repositories.chat import (
     add_chat,
@@ -22,8 +25,50 @@ def create_user(db: Session, username: str) -> User:
 def test_lifespan_creates_database_schema(test_app) -> None:
     with TestClient(test_app):
         table_names = set(inspect(test_app.state.db_engine).get_table_names())
+        user_columns = {
+            column["name"]
+            for column in inspect(test_app.state.db_engine).get_columns("users")
+        }
 
     assert table_names == {"users", "chat_logs"}
+    assert "is_admin" in user_columns
+
+
+def test_schema_upgrade_adds_admin_role_to_legacy_sqlite_database(tmp_path) -> None:
+    database_path = tmp_path / "legacy.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE users (
+                id INTEGER NOT NULL PRIMARY KEY,
+                username VARCHAR(50) NOT NULL UNIQUE,
+                hashed_password VARCHAR(255) NOT NULL,
+                created_at DATETIME NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO users (id, username, hashed_password, created_at)
+            VALUES (1, 'legacy_user', 'legacy-hash', '2026-08-20 00:00:00')
+            """
+        )
+
+    engine = create_db_engine(f"sqlite:///{database_path}")
+    try:
+        create_schema(engine)
+        user_columns = {
+            column["name"] for column in inspect(engine).get_columns("users")
+        }
+        with engine.connect() as connection:
+            is_admin = connection.execute(
+                text("SELECT is_admin FROM users WHERE username = 'legacy_user'")
+            ).scalar_one()
+    finally:
+        engine.dispose()
+
+    assert "is_admin" in user_columns
+    assert is_admin is False or is_admin == 0
 
 
 def test_user_repository_adds_and_finds_user(db_session: Session) -> None:
