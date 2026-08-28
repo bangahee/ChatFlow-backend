@@ -9,6 +9,7 @@ from app.observability import (
     configure_application_logging,
     request_logging_middleware,
 )
+from app.routers.admin import router as admin_router
 from app.routers.auth import router as auth_router
 from app.routers.chat import router as chat_router
 from app.routers.health import router as health_router
@@ -40,6 +41,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         expose_headers=["X-Request-ID"],
     )
     application.middleware("http")(request_logging_middleware)
+    application.include_router(admin_router)
     application.include_router(auth_router)
     application.include_router(chat_router)
     application.include_router(health_router)

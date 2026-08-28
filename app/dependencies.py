@@ -37,6 +37,20 @@ def unauthorized_exception() -> HTTPException:
     )
 
 
+def forbidden_exception() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="관리자 권한이 필요합니다.",
+    )
+
+
+def admin_chat_forbidden_exception() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="관리자 계정은 채팅을 사용할 수 없습니다.",
+    )
+
+
 def get_current_user(
     request: Request,
     credentials: Annotated[
@@ -63,3 +77,21 @@ def get_current_user(
         raise unauthorized_exception()
     request.state.user_id = user.id
     return user
+
+
+def get_current_admin(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """Require the current database user to hold the persisted admin role."""
+    if not current_user.is_admin:
+        raise forbidden_exception()
+    return current_user
+
+
+def get_current_chat_user(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """Require a non-administrator account for user chat operations."""
+    if current_user.is_admin:
+        raise admin_chat_forbidden_exception()
+    return current_user
