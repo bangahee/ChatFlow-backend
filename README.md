@@ -338,26 +338,27 @@ Persistent Volume을 `/data`에 Mount해야 SQLite 데이터가 재배포 후에
 유지됩니다. 구체적인 배포·재시작·데이터 영속성 검증과 증빙 항목은
 [Railway 배포 검증 문서](docs/RAILWAY_DEPLOYMENT.md)에 정리되어 있습니다.
 
-### 2026-08-28 Production 통합 검증
+### 2026-08-29 Production 최종 검증
 
 | 항목 | 결과 |
 |---|---|
-| Railway Health | `GET /health` → `200 {"status":"ok"}` |
-| Railway Backend | `main` 커밋 `9b94a87`(PR #20), Deployment `Successful` |
+| Railway Health | Container 재시작 후 `GET /health` → `200 {"status":"ok"}` |
+| Railway Backend | `main` 커밋 `e664343`(PR #23), Deployment `8d4705df` `Successful` |
 | Vercel Frontend | `main` 커밋 `b2f7630`, Production `Ready` |
 | CORS | Vercel Origin의 Login Preflight `200` 및 허용 Origin Header 확인 |
 | 사용자 흐름 | 회원가입 `201` → 로그인 `200` → 실제 OpenAI Chat `201` → 기록 조회 성공 |
 | 관리자 흐름 | 관리자 로그인 → 사용자 목록·사용자별 대화 조회 `200` |
 | 인증 복원 | Frontend 새로고침 후 로그인 상태와 기록 유지 |
-| SQLite 영속성 | Railway Container 재시작 전·후 동일 사용자와 대화 수 `1` 유지 |
+| 운영 로그 | 동일 `request_id`로 요청·AI·DB 저장·완료 이벤트 연결 확인 |
+| Timeout/Retry | AI timeout 4회 시도 후 `504` 변환 확인 |
+| SQLite 영속성 | Railway Container 재시작 후 동일 Chat과 AI 응답 유지 |
 | Frontend 오류 | 검증 중 Browser Console Error 없음 |
 
-초기 SQLite 영속성 검증은 `main` 커밋 `f82fc97`에서 완료했습니다. 이후 PR #13,
-PR #17, 관리자 Release PR #20까지 `main`에 병합하고 Railway 재배포를 완료했습니다.
-최신 운영 점검에서 WARNING 이벤트는 확인됐지만 INFO 이벤트가 Railway에 출력되지
-않는 문제를 발견해, 앱 로거가 Uvicorn Handler를 재사용하도록 보완했습니다. 이
-변경을 `main`에 반영하고 재배포한 뒤 아래 이벤트가 동일 `request_id`를 공유하는지
-최종 확인합니다.
+Railway GitHub App 권한과 `main` Source 연결을 복구하고 Auto Deploy를 활성화한 뒤,
+PR #23의 최신 `main`을 수동 배포했습니다. 운영 INFO 로그 출력 보완도 실제 환경에
+반영되어, 성공한 Chat 요청 `0947aa18-f5dc-423f-b6f0-aa2e6371f90c`에서 아래 이벤트가
+동일한 `request_id`를 공유하는 것을 확인했습니다. 질문·응답 본문과 Secret은 로그에
+기록되지 않습니다.
 
 ```text
 request_received
@@ -366,6 +367,11 @@ ai_call_succeeded
 db_save_succeeded
 request_completed
 ```
+
+Railway Container 재시작 후 Health 요청
+`9988c3aa-43db-47e1-8d31-c8c406b2cc9e`가 `200`으로 완료됐고, Frontend를
+새로고침해도 재시작 전 Chat과 AI 응답이 그대로 조회되어 `/data` Volume의 SQLite
+영속성을 재확인했습니다.
 
 ## 브랜치 전략과 역할
 
