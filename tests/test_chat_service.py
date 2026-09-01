@@ -6,7 +6,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import ChatLog, User
+from app.repositories import chat as chat_repository
 from app.repositories.chat import add_chat, list_user_chats
+from app.repositories.protocols import ChatRepository
 from app.repositories.user import add_user
 from app.services.ai import AIUnavailableError
 from app.services.chat import ChatPersistenceError, create_chat_reply
@@ -17,6 +19,10 @@ def create_user(db: Session, username: str = "chat_user") -> User:
     db.commit()
     db.refresh(user)
     return user
+
+
+def test_sqlalchemy_chat_repository_satisfies_service_interface() -> None:
+    assert isinstance(chat_repository, ChatRepository)
 
 
 def test_chat_service_passes_latest_three_chats_in_order(

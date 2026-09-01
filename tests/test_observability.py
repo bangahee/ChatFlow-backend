@@ -3,8 +3,10 @@ import logging
 from io import StringIO
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.observability import configure_application_logging, log_event
+from app.models import RequestLog
 
 
 def event_payloads(caplog) -> list[dict]:
@@ -87,8 +89,16 @@ def test_request_logs_share_server_request_id_and_completion_status(
     client: TestClient,
     caplog,
 ) -> None:
+    secret_token = "must-not-appear-in-request-logs"
     with caplog.at_level(logging.INFO, logger="app.request"):
-        response = client.get("/health")
+        response = client.get(
+            "/health",
+            headers={
+                "Authorization": f"Bearer {secret_token}",
+                "Origin": "https://frontend.example",
+                "User-Agent": "chatflow-test-client",
+            },
+        )
 
     payloads = event_payloads(caplog)
     assert [payload["event"] for payload in payloads] == [
@@ -99,9 +109,13 @@ def test_request_logs_share_server_request_id_and_completion_status(
     assert response.headers["x-request-id"] == payloads[0]["request_id"]
     assert payloads[0]["method"] == "GET"
     assert payloads[0]["path"] == "/health"
+    assert payloads[0]["origin"] == "https://frontend.example"
+    assert payloads[0]["content_type"] is None
+    assert payloads[0]["user_agent"] == "chatflow-test-client"
     assert payloads[1]["status_code"] == 200
     assert payloads[1]["user_id"] is None
     assert payloads[1]["latency_ms"] >= 0
+    assert secret_token not in caplog.text
 
 
 def test_invalid_login_logs_reason_without_credentials(
@@ -130,6 +144,7 @@ def test_invalid_login_logs_reason_without_credentials(
 
 def test_missing_bearer_logs_auth_failure_and_completed_request(
     client: TestClient,
+    test_app,
     caplog,
 ) -> None:
     with caplog.at_level(logging.INFO):
@@ -145,3 +160,14 @@ def test_missing_bearer_logs_auth_failure_and_completed_request(
     assert failed["request_id"] == response.headers["x-request-id"]
     assert completed["request_id"] == failed["request_id"]
     assert completed["status_code"] == 401
+
+    with test_app.state.session_factory() as db:
+        audit = db.scalar(
+            select(RequestLog).where(
+                RequestLog.request_id == response.headers["x-request-id"]
+            )
+        )
+        assert audit is not None
+        assert audit.status_code == 401
+        assert audit.error_type == "HTTP_401"
+        assert audit.user_id is None
