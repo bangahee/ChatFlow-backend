@@ -32,7 +32,7 @@ router = APIRouter(tags=["chat"])
 _create_chat_error_responses = {
     401: {
         "model": ErrorResponse,
-        "description": "Bearer Token 누락, 만료, 변조 또는 사용자 없음",
+        "description": "로그인 필요 또는 Bearer Token 만료·변조·사용자 없음",
     },
     403: {
         "model": ErrorResponse,
@@ -62,7 +62,7 @@ _create_chat_error_responses = {
 _list_chat_error_responses = {
     401: {
         "model": ErrorResponse,
-        "description": "Bearer Token 누락, 만료, 변조 또는 사용자 없음",
+        "description": "로그인 필요 또는 Bearer Token 만료·변조·사용자 없음",
     },
     403: {
         "model": ErrorResponse,
@@ -76,7 +76,7 @@ _list_chat_error_responses = {
 _delete_chat_error_responses = {
     401: {
         "model": ErrorResponse,
-        "description": "Bearer Token 누락, 만료, 변조 또는 사용자 없음",
+        "description": "로그인 필요 또는 Bearer Token 만료·변조·사용자 없음",
     },
     403: {
         "model": ErrorResponse,
@@ -132,6 +132,7 @@ async def create_chat(
             detail="대화 기록 저장 중 오류가 발생했습니다.",
         ) from exc
 
+    request.state.chat_id = chat.id
     return ChatResponse(
         id=chat.id,
         question=chat.question,

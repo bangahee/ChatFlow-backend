@@ -91,14 +91,15 @@ API Key, JWT, 비밀번호, 질문과 AI 응답 본문이 로그에 없는지도
 3. Browser에서 회원가입 → 로그인 → 질문 → 기록 조회 → 삭제를 확인한다.
 4. 허용되지 않은 Origin에서 CORS 요청이 거부되는지 확인한다.
 
-## 6. 실제 검증 결과 (2026-08-29 KST)
+## 6. 실제 검증 결과 (기능 2026-08-29, Release 상태 2026-09-01 KST)
 
 | 항목 | 검증 결과 |
 |---|---|
 | Backend URL | `https://chatflow-backend-production-b90c.up.railway.app` |
 | Frontend URL | `https://chat-flow-topaz.vercel.app` |
-| Backend 배포 | `main` 커밋 `e664343`(PR #23), Railway Deployment `8d4705df` `Successful` |
-| Frontend 배포 | `main` 커밋 `b2f7630`, Vercel `Ready` |
+| Backend 확인 기준 Release | 2026-09-01 `main` 커밋 `655d87b`(PR #25), Railway 상태 `Successful` |
+| Backend 기능 검증 기준 | 실행 코드 `e664343`(PR #23), Railway Deployment `8d4705df` |
+| Frontend 확인 기준 Release | 2026-09-01 `main` 커밋 `64698da`(PR #23), Vercel `Ready` |
 | Health | Railway 재시작 후 `200 {"status":"ok"}` |
 | CORS | Frontend Origin Preflight `200`, 허용 Origin Header 일치 |
 | 통합 흐름 | 회원가입 `201`, 로그인 `200`, 실제 Chat `201`, 기록 조회 성공 |
@@ -110,10 +111,11 @@ API Key, JWT, 비밀번호, 질문과 AI 응답 본문이 로그에 없는지도
 | Frontend 오류 | Browser Console Error 없음 |
 
 Railway GitHub App 권한과 `main` Source 연결을 복구하고 Auto Deploy를 활성화한 뒤,
-PR #23의 최신 `main`을 수동 배포했다. 운영 INFO 로그 출력 보완이 실제 환경에
-반영되어, 성공한 Chat 요청 `0947aa18-f5dc-423f-b6f0-aa2e6371f90c`에서 아래 이벤트가
-동일한 `request_id`를 공유하는 것을 확인했다. 질문·응답 본문과 Secret은 로그에
-기록되지 않았다.
+실행 코드 `e664343`을 수동 배포해 전체 기능을 검증했다. 이후 문서 동기화 PR #25가
+포함된 `655d87b`도 Railway에 성공적으로 배포됐다. PR #25는 실행 코드를 변경하지
+않으므로 아래 운영 검증은 현재 Release에도 동일하게 적용된다. 성공한 Chat 요청
+`0947aa18-f5dc-423f-b6f0-aa2e6371f90c`에서 아래 이벤트가 동일한 `request_id`를
+공유하는 것을 확인했다. 질문·응답 본문과 Secret은 로그에 기록되지 않았다.
 
 ```text
 request_received

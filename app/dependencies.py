@@ -29,7 +29,17 @@ def get_ai_responder(
     return create_ai_responder(settings)
 
 
+def login_required_exception() -> HTTPException:
+    """Return the stable response used when no bearer credential was supplied."""
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="로그인이 필요합니다.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 def unauthorized_exception() -> HTTPException:
+    """Return the response used for supplied but invalid credentials."""
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="인증 자격 증명이 유효하지 않거나 만료되었습니다.",
@@ -63,7 +73,7 @@ def get_current_user(
     """Resolve a valid bearer token to an existing database user."""
     if credentials is None or credentials.scheme.lower() != "bearer":
         log_auth_failed(request, "missing_or_invalid_bearer")
-        raise unauthorized_exception()
+        raise login_required_exception()
 
     try:
         username = decode_access_token(credentials.credentials, settings=settings)

@@ -29,9 +29,24 @@ def test_lifespan_creates_database_schema(test_app) -> None:
             column["name"]
             for column in inspect(test_app.state.db_engine).get_columns("users")
         }
+        request_log_columns = {
+            column["name"]
+            for column in inspect(test_app.state.db_engine).get_columns("request_logs")
+        }
 
-    assert table_names == {"users", "chat_logs"}
+    assert table_names == {"users", "chat_logs", "request_logs"}
     assert "is_admin" in user_columns
+    assert {
+        "request_id",
+        "user_id",
+        "chat_id",
+        "status_code",
+        "latency_ms",
+        "error_type",
+        "origin",
+        "content_type",
+        "user_agent",
+    } <= request_log_columns
 
 
 def test_schema_upgrade_adds_admin_role_to_legacy_sqlite_database(tmp_path) -> None:

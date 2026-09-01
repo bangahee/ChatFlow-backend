@@ -80,6 +80,7 @@ def test_me_requires_bearer_token(client: TestClient) -> None:
     response = client.get("/api/me")
 
     assert response.status_code == 401
+    assert response.json() == {"detail": "로그인이 필요합니다."}
     assert response.headers["www-authenticate"] == "Bearer"
 
 
@@ -107,6 +108,9 @@ def test_me_rejects_tampered_token(client: TestClient) -> None:
     )
 
     assert response.status_code == 401
+    assert response.json() == {
+        "detail": "인증 자격 증명이 유효하지 않거나 만료되었습니다."
+    }
 
 
 def test_me_rejects_expired_token(client: TestClient, test_app) -> None:

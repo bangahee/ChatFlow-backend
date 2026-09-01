@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.dependencies import get_ai_responder
-from app.models import User
+from app.models import RequestLog, User
 from app.services.ai import AITimeoutError, AIUnavailableError, AIUpstreamError
 
 
@@ -136,6 +136,18 @@ def test_chat_success_is_saved_and_returned(
     assert chat_events[1]["request_id"] == body["request_id"]
     assert chat_events[1]["status_code"] == 201
     assert "hello response" not in caplog.text
+
+    with test_app.state.session_factory() as db:
+        audit = db.scalar(
+            select(RequestLog).where(RequestLog.request_id == body["request_id"])
+        )
+        assert audit is not None
+        assert audit.chat_id == body["id"]
+        assert audit.user_id is not None
+        assert audit.status_code == 201
+        assert audit.latency_ms >= 0
+        assert audit.error_type is None
+        assert audit.user_agent == "testclient"
 
     history = client.get("/api/me/chats", headers=auth_headers(token))
     assert history.status_code == 200
