@@ -101,6 +101,11 @@ Stateless JWT Bearer 인증을 사용합니다. 로그인 성공 시 Frontend가
 `Depends(get_current_user)`로 분리하며, 관리자와 일반 Chat 사용자는 이 의존성을
 각각 확장한 `get_current_admin`, `get_current_chat_user`로 제한합니다.
 
+평가항목에서 `SessionMiddleware` 등록 여부를 확인하는 경우, 해당 부분은 서버 세션
+방식을 선택했을 때의 구현 기준입니다. 이 프로젝트는 평가항목이 허용하는 JWT 방식을
+선택했으므로 `SessionMiddleware`를 사용하지 않고, 인증 상태 복원과 접근 제어는
+Frontend의 Token 저장소와 Backend의 `Depends` 의존성으로 동일한 요구를 충족합니다.
+
 비로그인 사용자의 Chat과 기록 접근을 제한하는 이유는 질문·응답이 사용자별 개인
 데이터이고, 최근 기록이 다음 AI 요청의 문맥으로 사용되기 때문입니다. 인증 없이
 접근을 허용하면 기록 소유권을 확인할 수 없어 다른 사용자의 대화가 노출되거나 잘못된
@@ -354,6 +359,10 @@ SQLite와 SQLAlchemy 2.0을 사용합니다. `User : ChatLog = 1:N`,
 `User : RequestLog = 1:N`이며 성공한 Chat 요청은 `RequestLog.chat_id`로 저장된
 질문·AI 응답과 운영 Metadata를 연결합니다.
 
+평가항목에서 표현한 `conversations` Table·Resource는 이 프로젝트의 `chat_logs`에
+해당합니다. `chat_logs`의 한 Row가 한 번의 사용자 질문과 AI 응답을 나타내며,
+`user_id`를 통해 사용자별 대화 기록을 추적합니다.
+
 ```text
 users                         chat_logs
 ├── id PK                 ┌── id PK
@@ -524,10 +533,12 @@ Persistent Volume을 `/data`에 Mount해야 SQLite 데이터가 재배포 후에
 
 | 항목 | 결과 |
 |---|---|
-| Railway Health | Container 재시작 후 `GET /health` → `200 {"status":"ok"}` |
-| Railway Backend | 2026-09-01 확인 기준 `main` `655d87b`(PR #25), Railway `Successful` |
-| Backend 기능 검증 기준 | 실행 코드 `e664343`(PR #23), Deployment `8d4705df` |
-| Vercel Frontend | 2026-09-01 확인 기준 `main` `64698da`(PR #23), Production `Ready` |
+| 외부 접근성 재확인 | 2026-09-02 Vercel `200`, Railway `GET /health` → `200 {"status":"ok"}` |
+| Backend Repository | 최신 [`main` Branch](https://github.com/bangahee/ChatFlow-backend/tree/main), [병합된 develop→main Release PR 목록](https://github.com/bangahee/ChatFlow-backend/pulls?q=is%3Apr+is%3Amerged+base%3Amain+head%3Adevelop) |
+| Backend 자동 검증 | 최신 Release Source 기준 pytest `124 passed` |
+| Backend 전체 운영 검증 기준 | 실행 코드 `e664343`(PR #23), Deployment `8d4705df` |
+| Frontend Repository | `main` `bd67bc4`, [PR #25 입력 초기화 수정](https://github.com/bangahee/ChatFlow/pull/25) 병합 완료 |
+| Frontend 자동 검증 | 최신 `main` 기준 lint, 테스트 `31 passed`, Production build 통과 |
 | CORS | Vercel Origin의 Login Preflight `200` 및 허용 Origin Header 확인 |
 | 사용자 흐름 | 회원가입 `201` → 로그인 `200` → 실제 OpenAI Chat `201` → 기록 조회 성공 |
 | 관리자 흐름 | 관리자 로그인 → 사용자 목록·사용자별 대화 조회 `200` |
@@ -537,10 +548,11 @@ Persistent Volume을 `/data`에 Mount해야 SQLite 데이터가 재배포 후에
 | SQLite 영속성 | Railway Container 재시작 후 동일 Chat과 AI 응답 유지 |
 | Frontend 오류 | 검증 중 Browser Console Error 없음 |
 
-2026-08-29에 실행 코드 `e664343`을 기준으로 전체 기능과 영속성을 검증했고, 이후
-문서 동기화 PR #25까지 포함한 `655d87b`이 Railway에 성공적으로 배포됐습니다.
-PR #25는 실행 코드를 변경하지 않으므로 아래 기능 검증 결과는 현재 Release에도
-동일하게 적용됩니다. 성공한 Chat 요청
+2026-08-29에 실행 코드 `e664343`을 기준으로 전체 기능과 영속성을 검증했습니다.
+이후 변경 사항은 Backend pytest 124개와 Frontend lint·테스트 31개·Production build로
+검증했고, 2026-09-02에 두 배포 URL의 외부 접근성을 다시 확인했습니다. 운영 DB에
+쓰기를 발생시키는 실제 OpenAI Chat·재시작 영속성 검증은 위 2026-08-29 증빙을 최종
+기준으로 유지하여 자동 검증과 운영 검증의 범위를 구분합니다. 성공한 Chat 요청
 `0947aa18-f5dc-423f-b6f0-aa2e6371f90c`에서 아래 이벤트가 동일한 `request_id`를
 공유하는 것을 확인했습니다. 질문·응답 본문과 Secret은 로그에 기록되지 않습니다.
 
@@ -582,13 +594,24 @@ feature branch → Pull Request/review → develop → final PR → main
 | 김승우 | [Backend PR #5 DB·Chat API](https://github.com/bangahee/ChatFlow-backend/pull/5), [Frontend PR #3 React Frontend 통합](https://github.com/bangahee/ChatFlow/pull/3) |
 | 반가희 | [Backend PR #6 OpenAI·안정성](https://github.com/bangahee/ChatFlow-backend/pull/6), [Backend PR #7 운영 로그·통합 검증](https://github.com/bangahee/ChatFlow-backend/pull/7), [Frontend PR #7 역할·기여 정합성](https://github.com/bangahee/ChatFlow/pull/7) |
 | 김두운 | [Frontend PR #3 React Frontend 통합](https://github.com/bangahee/ChatFlow/pull/3), [Frontend PR #23 말풍선 줄바꿈](https://github.com/bangahee/ChatFlow/pull/23) 및 UI·UX·반응형·사용성 커밋 |
-| 최종 Release | [Backend PR #25 develop→main](https://github.com/bangahee/ChatFlow-backend/pull/25), [Frontend main `64698da`](https://github.com/bangahee/ChatFlow/commit/64698da3bd7e14070f51bb4ef12b411ac605736b) |
+| 평가·운영 보완 | [Backend PR #26 평가 요구사항·운영 감사](https://github.com/bangahee/ChatFlow-backend/pull/26), [Backend PR #29 최종 평가 증빙 정합성](https://github.com/bangahee/ChatFlow-backend/pull/29), [Frontend PR #25 입력 상태 회귀 수정](https://github.com/bangahee/ChatFlow/pull/25) |
+| 최종 Release | [Backend develop→main Release PR 목록](https://github.com/bangahee/ChatFlow-backend/pulls?q=is%3Apr+is%3Amerged+base%3Amain+head%3Adevelop), [Frontend main `bd67bc4`](https://github.com/bangahee/ChatFlow/commit/bd67bc43293c9271ffa8c760011bc330ca01018d) |
+
+README 설명과 실제 구현·이력을 대조할 때는 다음 연결표를 사용합니다.
+
+| 평가 영역 | Source 및 검증 | 대표 PR |
+|---|---|---|
+| 인증·접근 제어 | [`dependencies.py`](app/dependencies.py), [`auth.py`](app/routers/auth.py), [`test_auth_api.py`](tests/test_auth_api.py) | [PR #4](https://github.com/bangahee/ChatFlow-backend/pull/4), [PR #21](https://github.com/bangahee/ChatFlow-backend/pull/21) |
+| DB·Chat·Repository | [`models.py`](app/models.py), [`repositories/`](app/repositories), [`test_chat_service.py`](tests/test_chat_service.py) | [PR #5](https://github.com/bangahee/ChatFlow-backend/pull/5), [PR #26](https://github.com/bangahee/ChatFlow-backend/pull/26) |
+| OpenAI·오류·운영 로그 | [`ai.py`](app/services/ai.py), [`observability.py`](app/observability.py), [`test_observability.py`](tests/test_observability.py) | [PR #6](https://github.com/bangahee/ChatFlow-backend/pull/6), [PR #7](https://github.com/bangahee/ChatFlow-backend/pull/7), [PR #26](https://github.com/bangahee/ChatFlow-backend/pull/26) |
+| 사용자·관리자 UI | [Frontend `src/pages`](https://github.com/bangahee/ChatFlow/tree/main/src/pages), [Frontend 테스트](https://github.com/bangahee/ChatFlow/blob/main/src/App.test.tsx) | [Frontend PR #3](https://github.com/bangahee/ChatFlow/pull/3), [Frontend PR #24](https://github.com/bangahee/ChatFlow/pull/24), [Frontend PR #25](https://github.com/bangahee/ChatFlow/pull/25) |
+| 최종 브랜치 이력 | Backend `develop → main`, Frontend 최신 `main` | [Backend Release PR 목록](https://github.com/bangahee/ChatFlow-backend/pulls?q=is%3Apr+is%3Amerged+base%3Amain+head%3Adevelop), [Frontend PR #25](https://github.com/bangahee/ChatFlow/pull/25) |
 
 표준 흐름은 기능 Branch → Pull Request → 다른 팀원 Review → `develop` Merge →
-`develop → main` Release PR입니다. Backend는 이 흐름으로 PR #25까지 Release했습니다.
+`develop → main` Release PR입니다. Backend는 이 흐름으로 Release 이력을 유지합니다.
 Release 이후의 제출 직전 문서·평가 호환성 수정은 여러 PR로 분산하지 않고 Review와
 필수 CI를 거친 단일 Stabilization PR로 `main`에 반영할 수 있습니다. Frontend의 UI
-긴급 수정 PR #23도 Review 후 `main`에 직접 병합한 예외입니다. 이런 예외 이후 추가
+긴급 수정 PR #23·#24·#25도 CI 확인 후 `main`에 직접 병합한 예외입니다. 이런 예외 이후 추가
 개발이 필요하면 `main → develop` 동기화 PR을 먼저 만들고, 기능 Branch를 `main`에
 직접 병합하는 방식을 일반 개발 흐름으로 반복하지 않습니다.
 
