@@ -534,7 +534,7 @@ Persistent Volume을 `/data`에 Mount해야 SQLite 데이터가 재배포 후에
 | 항목 | 결과 |
 |---|---|
 | 외부 접근성 재확인 | 2026-09-02 Vercel `200`, Railway `GET /health` → `200 {"status":"ok"}` |
-| Backend Repository | 최신 [`main` Branch](https://github.com/bangahee/ChatFlow-backend/tree/main), [PR #28 develop→main](https://github.com/bangahee/ChatFlow-backend/pull/28) 병합 완료 |
+| Backend Repository | 최신 [`main` Branch](https://github.com/bangahee/ChatFlow-backend/tree/main), [병합된 develop→main Release PR 목록](https://github.com/bangahee/ChatFlow-backend/pulls?q=is%3Apr+is%3Amerged+base%3Amain+head%3Adevelop) |
 | Backend 자동 검증 | 최신 Release Source 기준 pytest `124 passed` |
 | Backend 전체 운영 검증 기준 | 실행 코드 `e664343`(PR #23), Deployment `8d4705df` |
 | Frontend Repository | `main` `bd67bc4`, [PR #25 입력 초기화 수정](https://github.com/bangahee/ChatFlow/pull/25) 병합 완료 |
@@ -595,7 +595,7 @@ feature branch → Pull Request/review → develop → final PR → main
 | 반가희 | [Backend PR #6 OpenAI·안정성](https://github.com/bangahee/ChatFlow-backend/pull/6), [Backend PR #7 운영 로그·통합 검증](https://github.com/bangahee/ChatFlow-backend/pull/7), [Frontend PR #7 역할·기여 정합성](https://github.com/bangahee/ChatFlow/pull/7) |
 | 김두운 | [Frontend PR #3 React Frontend 통합](https://github.com/bangahee/ChatFlow/pull/3), [Frontend PR #23 말풍선 줄바꿈](https://github.com/bangahee/ChatFlow/pull/23) 및 UI·UX·반응형·사용성 커밋 |
 | 평가·운영 보완 | [Backend PR #26 평가 요구사항·운영 감사](https://github.com/bangahee/ChatFlow-backend/pull/26), [Backend PR #29 최종 평가 증빙 정합성](https://github.com/bangahee/ChatFlow-backend/pull/29), [Frontend PR #25 입력 상태 회귀 수정](https://github.com/bangahee/ChatFlow/pull/25) |
-| 최종 Release | [Backend PR #28 develop→main](https://github.com/bangahee/ChatFlow-backend/pull/28), [Frontend main `bd67bc4`](https://github.com/bangahee/ChatFlow/commit/bd67bc43293c9271ffa8c760011bc330ca01018d) |
+| 최종 Release | [Backend develop→main Release PR 목록](https://github.com/bangahee/ChatFlow-backend/pulls?q=is%3Apr+is%3Amerged+base%3Amain+head%3Adevelop), [Frontend main `bd67bc4`](https://github.com/bangahee/ChatFlow/commit/bd67bc43293c9271ffa8c760011bc330ca01018d) |
 
 README 설명과 실제 구현·이력을 대조할 때는 다음 연결표를 사용합니다.
 
@@ -605,10 +605,10 @@ README 설명과 실제 구현·이력을 대조할 때는 다음 연결표를 �
 | DB·Chat·Repository | [`models.py`](app/models.py), [`repositories/`](app/repositories), [`test_chat_service.py`](tests/test_chat_service.py) | [PR #5](https://github.com/bangahee/ChatFlow-backend/pull/5), [PR #26](https://github.com/bangahee/ChatFlow-backend/pull/26) |
 | OpenAI·오류·운영 로그 | [`ai.py`](app/services/ai.py), [`observability.py`](app/observability.py), [`test_observability.py`](tests/test_observability.py) | [PR #6](https://github.com/bangahee/ChatFlow-backend/pull/6), [PR #7](https://github.com/bangahee/ChatFlow-backend/pull/7), [PR #26](https://github.com/bangahee/ChatFlow-backend/pull/26) |
 | 사용자·관리자 UI | [Frontend `src/pages`](https://github.com/bangahee/ChatFlow/tree/main/src/pages), [Frontend 테스트](https://github.com/bangahee/ChatFlow/blob/main/src/App.test.tsx) | [Frontend PR #3](https://github.com/bangahee/ChatFlow/pull/3), [Frontend PR #24](https://github.com/bangahee/ChatFlow/pull/24), [Frontend PR #25](https://github.com/bangahee/ChatFlow/pull/25) |
-| 최종 브랜치 이력 | Backend `develop → main`, Frontend 최신 `main` | [Backend PR #28](https://github.com/bangahee/ChatFlow-backend/pull/28), [Frontend PR #25](https://github.com/bangahee/ChatFlow/pull/25) |
+| 최종 브랜치 이력 | Backend `develop → main`, Frontend 최신 `main` | [Backend Release PR 목록](https://github.com/bangahee/ChatFlow-backend/pulls?q=is%3Apr+is%3Amerged+base%3Amain+head%3Adevelop), [Frontend PR #25](https://github.com/bangahee/ChatFlow/pull/25) |
 
 표준 흐름은 기능 Branch → Pull Request → 다른 팀원 Review → `develop` Merge →
-`develop → main` Release PR입니다. Backend는 이 흐름으로 PR #28까지 Release했습니다.
+`develop → main` Release PR입니다. Backend는 이 흐름으로 Release 이력을 유지합니다.
 Release 이후의 제출 직전 문서·평가 호환성 수정은 여러 PR로 분산하지 않고 Review와
 필수 CI를 거친 단일 Stabilization PR로 `main`에 반영할 수 있습니다. Frontend의 UI
 긴급 수정 PR #23·#24·#25도 CI 확인 후 `main`에 직접 병합한 예외입니다. 이런 예외 이후 추가
