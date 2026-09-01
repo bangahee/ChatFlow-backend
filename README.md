@@ -594,7 +594,7 @@ feature branch → Pull Request/review → develop → final PR → main
 | 김승우 | [Backend PR #5 DB·Chat API](https://github.com/bangahee/ChatFlow-backend/pull/5), [Frontend PR #3 React Frontend 통합](https://github.com/bangahee/ChatFlow/pull/3) |
 | 반가희 | [Backend PR #6 OpenAI·안정성](https://github.com/bangahee/ChatFlow-backend/pull/6), [Backend PR #7 운영 로그·통합 검증](https://github.com/bangahee/ChatFlow-backend/pull/7), [Frontend PR #7 역할·기여 정합성](https://github.com/bangahee/ChatFlow/pull/7) |
 | 김두운 | [Frontend PR #3 React Frontend 통합](https://github.com/bangahee/ChatFlow/pull/3), [Frontend PR #23 말풍선 줄바꿈](https://github.com/bangahee/ChatFlow/pull/23) 및 UI·UX·반응형·사용성 커밋 |
-| 평가·운영 보완 | [Backend PR #26 평가 요구사항·운영 감사](https://github.com/bangahee/ChatFlow-backend/pull/26), [Frontend PR #25 입력 상태 회귀 수정](https://github.com/bangahee/ChatFlow/pull/25) |
+| 평가·운영 보완 | [Backend PR #26 평가 요구사항·운영 감사](https://github.com/bangahee/ChatFlow-backend/pull/26), [Backend PR #29 최종 평가 증빙 정합성](https://github.com/bangahee/ChatFlow-backend/pull/29), [Frontend PR #25 입력 상태 회귀 수정](https://github.com/bangahee/ChatFlow/pull/25) |
 | 최종 Release | [Backend PR #28 develop→main](https://github.com/bangahee/ChatFlow-backend/pull/28), [Frontend main `bd67bc4`](https://github.com/bangahee/ChatFlow/commit/bd67bc43293c9271ffa8c760011bc330ca01018d) |
 
 README 설명과 실제 구현·이력을 대조할 때는 다음 연결표를 사용합니다.
