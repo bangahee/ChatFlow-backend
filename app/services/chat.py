@@ -6,12 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.models import ChatLog, User
 from app.observability import log_event
-from app.repositories.chat import (
-    add_chat,
-    delete_user_chats,
-    get_recent_chats,
-    list_user_chats,
-)
+from app.repositories import chat as chat_repository
+from app.repositories.protocols import ChatRepository
 from app.services.ai import AIUpstreamError
 
 AIResponder = Callable[[str, list[ChatLog], str], Awaitable[str]]
@@ -28,16 +24,17 @@ async def create_chat_reply(
     question: str,
     request_id: str,
     ai_responder: AIResponder,
+    repository: ChatRepository = chat_repository,
 ) -> ChatLog:
     """Generate an AI reply and persist it only after AI success."""
-    history = get_recent_chats(db, current_user.id, limit=3)
+    history = repository.get_recent_chats(db, current_user.id, limit=3)
     ai_response = await ai_responder(question, history, request_id)
     if not isinstance(ai_response, str) or not ai_response.strip():
         raise AIUpstreamError("AI response is empty")
 
     save_started_at = time.monotonic()
     try:
-        chat = add_chat(
+        chat = repository.add_chat(
             db,
             current_user.id,
             question,
@@ -71,19 +68,27 @@ async def create_chat_reply(
         raise ChatPersistenceError("Failed to save chat") from exc
 
 
-def get_chat_history(db: Session, current_user: User) -> list[ChatLog]:
+def get_chat_history(
+    db: Session,
+    current_user: User,
+    repository: ChatRepository = chat_repository,
+) -> list[ChatLog]:
     """Return the current user's complete chat history."""
     try:
-        return list_user_chats(db, current_user.id)
+        return repository.list_user_chats(db, current_user.id)
     except Exception as exc:
         db.rollback()
         raise ChatPersistenceError("Failed to load chat history") from exc
 
 
-def clear_chat_history(db: Session, current_user: User) -> int:
+def clear_chat_history(
+    db: Session,
+    current_user: User,
+    repository: ChatRepository = chat_repository,
+) -> int:
     """Delete and commit only the current user's chat history."""
     try:
-        deleted_count = delete_user_chats(db, current_user.id)
+        deleted_count = repository.delete_user_chats(db, current_user.id)
         db.commit()
         return deleted_count
     except Exception as exc:

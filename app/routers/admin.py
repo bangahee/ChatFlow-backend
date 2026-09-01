@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 _admin_authentication_responses = {
     401: {
         "model": ErrorResponse,
-        "description": "Bearer Token 누락, 만료, 변조 또는 사용자 없음",
+        "description": "로그인 필요 또는 Bearer Token 만료·변조·사용자 없음",
     },
     403: {
         "model": ErrorResponse,

@@ -21,7 +21,7 @@ Backend가 어떻게 동작하는지 확인한다. 과제 필수요건에 없는
 - 배포 대상: Railway
 - 통합 브랜치: `develop`
 - 운영 브랜치: `main`
-- 현재 전체 테스트: 122개
+- 현재 전체 테스트: 124개
 
 주요 사용자 흐름은 다음과 같다.
 
@@ -449,7 +449,7 @@ python -m pytest -q
 정상 기준:
 
 ```text
-122 passed
+124 passed
 ```
 
 테스트는 임시 SQLite DB와 Mock OpenAI Client를 사용하므로 실제 OpenAI Key와
@@ -474,17 +474,19 @@ app/
 ├── config.py               .env 및 Settings
 ├── database.py             Engine, Session, Schema 생성
 ├── dependencies.py         DB, 인증 사용자, AI 의존성
-├── models.py               User, ChatLog 모델
-├── observability.py        request_id와 구조화 로그
+├── models.py               User, ChatLog, RequestLog 모델
+├── observability.py        request_id 구조화 로그와 운영 감사 저장
 ├── routers/
 │   ├── auth.py             회원가입, 로그인, 현재 사용자 API
 │   ├── chat.py             Chat 생성, 조회, 삭제 API
+│   ├── admin.py            관리자 사용자와 대화 조회 API
 │   └── health.py           Health Check
 ├── schemas/                요청/응답 Pydantic Schema
-├── repositories/           SQLAlchemy 조회 쿼리
+├── repositories/           SQLAlchemy 조회 쿼리와 Repository Protocol
 └── services/               인증, Chat 흐름, OpenAI 로직
 
 tests/                      pytest 테스트
+scripts/check_logs.sql       최근 사용자별 대화 확인 SQL
 .github/workflows/test.yml  GitHub Actions
 railway.json                Railway 빌드/실행 설정
 .env.example                환경변수 예시
@@ -528,11 +530,21 @@ auth_failed
 request_completed
 ```
 
-로그에는 길이, 상태 코드, latency와 오류 종류만 기록하며 비밀번호, JWT, 질문과
-응답 본문, OpenAI Key를 기록하지 않는다.
+로그에는 길이, 상태 코드, latency, 오류 종류와 allow-list 방식의 Origin,
+Content-Type, User-Agent만 기록하며 비밀번호, JWT, Authorization, Cookie, 질문과
+응답 본문, OpenAI Key를 기록하지 않는다. 대화 원문은 `chat_logs`, 안전한 요청
+Metadata와 처리 결과는 `request_logs`에 분리해 저장한다.
 
 문제가 발생하면 API 응답의 `X-Request-ID` 또는 Chat 응답의 `request_id`를 기준으로
 로그를 찾는다.
+
+최근 대화와 연결된 운영 Metadata는 다음 명령으로 확인한다.
+
+```bash
+sqlite3 -header -column ./chatflow.db < scripts/check_logs.sql
+```
+
+Railway Service Shell에서는 DB 경로를 `/data/chatflow.db`로 바꾼다.
 
 ## 13. 자주 발생하는 오류
 

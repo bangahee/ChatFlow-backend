@@ -39,6 +39,32 @@ FastAPI Backend (Railway)
 Router는 HTTP 계약, Service는 업무 흐름, Repository는 SQLAlchemy 쿼리를
 담당합니다. OpenAI API Key와 JWT Secret은 서버 환경 변수에만 저장합니다.
 
+### 파일과 컴포넌트 역할
+
+```text
+app/
+├── main.py                  FastAPI 생성, Middleware 설정, Router 등록
+├── config.py                환경 변수와 Settings 검증
+├── database.py              SQLAlchemy Engine, Session, 초기 Schema 생성
+├── dependencies.py          DB Session, JWT 사용자, AI 의존성 제공
+├── models.py                User, ChatLog ORM 모델
+├── observability.py         request_id 기반 구조화 요청 로그
+├── routers/
+│   ├── auth.py              회원가입·로그인·현재 사용자 API
+│   ├── chat.py              질문 생성·내 기록 조회·전체 삭제 API
+│   ├── admin.py             관리자 사용자·대화 조회 API
+│   └── health.py            외부 Health Check
+├── schemas/                 Pydantic 요청·응답·오류 Schema
+├── repositories/            DB Query와 ChatRepository 인터페이스
+└── services/                인증, Chat Transaction, OpenAI 업무 흐름
+```
+
+웹 UI는 Backend 내부 Template Router가 아니라 별도 Frontend 저장소의
+`src/pages`와 `src/components`에 있습니다. `RegisterPage`·`LoginPage`는 인증 UI,
+`ChatPage`는 일반 사용자 질문·기록 UI, `AdminPage`는 운영 조회 UI를 담당합니다.
+따라서 Backend Router는 JSON API 계약만 담당하고 UI Route는 React Router가
+담당합니다.
+
 ## 주요 기능
 
 - Argon2 비밀번호 해시와 JWT Bearer 인증
@@ -48,6 +74,7 @@ Router는 HTTP 계약, Service는 업무 흐름, Repository는 SQLAlchemy 쿼리
 - OpenAI timeout, rate limit, 연결 오류와 5xx 재시도
 - 오류 유형별 502, 503, 504 응답과 실패 응답 미저장
 - 요청 수신부터 AI 호출과 DB 저장, 요청 완료까지 동일 `request_id` 추적
+- `request_logs`에 처리 상태·응답 시간·안전한 요청 Metadata 영속화
 - `/health`, pytest, GitHub Actions, Railway Config as Code
 
 ## Frontend UI와 인증 상태 증빙
@@ -70,9 +97,29 @@ Stateless JWT Bearer 인증을 사용합니다. 로그인 성공 시 Frontend가
 서버를 여러 Instance로 확장해도 별도 Session Store 없이 동일한 인증 정책을
 유지할 수 있습니다.
 
+따라서 `SessionMiddleware`는 등록하지 않습니다. 인증 확인은 재사용 가능한 FastAPI
+`Depends(get_current_user)`로 분리하며, 관리자와 일반 Chat 사용자는 이 의존성을
+각각 확장한 `get_current_admin`, `get_current_chat_user`로 제한합니다.
+
+비로그인 사용자의 Chat과 기록 접근을 제한하는 이유는 질문·응답이 사용자별 개인
+데이터이고, 최근 기록이 다음 AI 요청의 문맥으로 사용되기 때문입니다. 인증 없이
+접근을 허용하면 기록 소유권을 확인할 수 없어 다른 사용자의 대화가 노출되거나 잘못된
+문맥이 전달될 수 있습니다.
+
 일반 사용자의 기록 조회·추적은 인증된 `GET /api/me/chats`와 Frontend의 내 대화
 기록 화면으로 제한됩니다. 별도 관리자 권한을 가진 계정은 채팅 API를 사용할 수
 없고, 관리자 API를 통해 일반 사용자와 선택 사용자의 대화 기록만 조회할 수 있습니다.
+
+회원가입 서버 처리 순서는 다음과 같습니다.
+
+```text
+POST /api/auth/register
+  → RegisterRequest Pydantic 형식 검증
+  → 중복 username 확인
+  → Argon2 비밀번호 Hash 생성
+  → User 생성 및 Transaction commit
+  → 비밀번호를 제외한 201 RegisterResponse 반환
+```
 
 ## 로컬 실행
 
@@ -222,6 +269,65 @@ curl -X DELETE http://localhost:8000/api/me/chats \
 
 처리 가능한 오류는 `{"detail":"오류 설명"}` 형태입니다.
 
+실제 실패 응답 예시는 다음과 같습니다.
+
+인증 정보가 없는 보호 API 요청:
+
+```json
+{
+  "detail": "로그인이 필요합니다."
+}
+```
+
+유효하지 않거나 만료된 Token:
+
+```json
+{
+  "detail": "인증 자격 증명이 유효하지 않거나 만료되었습니다."
+}
+```
+
+질문 길이 또는 형식 검증 실패:
+
+```json
+{
+  "detail": [
+    {
+      "type": "string_too_long",
+      "loc": ["body", "question"],
+      "msg": "String should have at most 500 characters",
+      "input": "<500자를 초과한 질문>",
+      "ctx": {"max_length": 500}
+    }
+  ]
+}
+```
+
+OpenAI 응답 처리 실패:
+
+```json
+{
+  "detail": "AI 서비스 응답 처리 중 오류가 발생했습니다."
+}
+```
+
+사용자에게 노출하는 서비스 오류는 HTTP 상태와 `detail`을 공통 계약으로 사용하고
+한국어 존댓말 문장으로 통일합니다. 내부 예외명·Stack Trace·Secret은 응답에 노출하지
+않습니다. 현재 지원 언어는 한국어이며, 다국어가 필요해지면 상태 코드와 안정적인 내부
+오류 식별자는 유지하고 Frontend의 메시지 사전에서 Locale별 문구를 선택합니다.
+
+### API 호환성과 Version 정책
+
+- 현재 공개 계약은 `/api`의 Version 1로 간주합니다.
+- 선택 필드나 새 Endpoint처럼 기존 Client를 깨지 않는 변경은 현재 경로에 추가합니다.
+- 필드 삭제·이름 변경·의미 변경처럼 호환되지 않는 변경은 `/api/v2`에서 제공하며
+  기존 Version은 사전 공지한 기간 동안 유지합니다.
+- API 변경 PR은 Pydantic Schema, OpenAPI 응답, Backend 테스트, Frontend Type과
+  README 예시를 함께 수정해야 합니다.
+- 현재 `/api/me/chats`는 로그인 사용자의 전체 ChatLog Collection이며, 다중 대화방이
+  필요해질 경우 `/api/conversations`와 `/api/conversations/{id}`를 새 Version 또는
+  호환 가능한 Resource로 설계합니다.
+
 ## 관리자 조회
 
 관리자는 `/api/me` 응답의 `is_admin`이 `true`인 계정만 사용할 수 있습니다. 일반
@@ -244,7 +350,9 @@ python -m scripts.grant_admin <username>
 
 ## Database
 
-SQLite와 SQLAlchemy 2.0을 사용하며 `User : ChatLog = 1:N` 관계입니다.
+SQLite와 SQLAlchemy 2.0을 사용합니다. `User : ChatLog = 1:N`,
+`User : RequestLog = 1:N`이며 성공한 Chat 요청은 `RequestLog.chat_id`로 저장된
+질문·AI 응답과 운영 Metadata를 연결합니다.
 
 ```text
 users                         chat_logs
@@ -253,6 +361,16 @@ users                         chat_logs
 ├── hashed_password       ├── question
 ├── is_admin              ├── response
 └── created_at            └── created_at
+
+request_logs
+├── id PK
+├── request_id UNIQUE
+├── user_id FK → users.id (nullable)
+├── chat_id FK → chat_logs.id (nullable)
+├── method / path / status_code / latency_ms
+├── origin / content_type / user_agent
+├── error_type
+└── created_at
 ```
 
 | Table | Field | Type/제약 | 설명 |
@@ -267,14 +385,70 @@ users                         chat_logs
 | `chat_logs` | `question` | TEXT, NOT NULL | 사용자 질문 |
 | `chat_logs` | `response` | TEXT, NOT NULL | AI 응답 |
 | `chat_logs` | `created_at` | UTC datetime, INDEX, NOT NULL | 생성 시각 |
+| `request_logs` | `request_id` | `VARCHAR(36)`, UNIQUE, INDEX | 요청 추적 ID |
+| `request_logs` | `user_id` | FK, nullable, INDEX | 인증된 사용자 |
+| `request_logs` | `chat_id` | FK, nullable, INDEX | 성공한 ChatLog 연결 |
+| `request_logs` | `method`, `path` | 문자열 | HTTP 요청 Resource |
+| `request_logs` | `status_code` | 정수, INDEX | 최종 처리 상태 |
+| `request_logs` | `latency_ms` | 실수 | Backend 응답 시간 |
+| `request_logs` | `origin`, `content_type`, `user_agent` | nullable 문자열 | Allow-list 요청 Header Metadata |
+| `request_logs` | `error_type` | nullable 문자열 | `HTTP_401` 등 오류 분류 |
+| `request_logs` | `created_at` | UTC datetime, INDEX | 처리 기록 시각 |
 
 서버 lifespan 시작 시 빈 DB에 스키마를 생성합니다. Repository는 쿼리를,
 Service는 commit과 rollback을 담당합니다. 현재 MVP에서는 Alembic을 사용하지
-않습니다.
+않습니다. `create_all()`은 빈 DB 생성만 담당하며 기존 Table의 Column을 자동으로
+변경하지 않습니다. 이번 운영 감사 기능은 기존 Column을 변경하지 않고 독립적인
+`request_logs` Table을 추가하므로 현재 Volume DB에서도 서버 시작 시 안전하게
+생성됩니다.
+
+### Schema 변경과 Migration 절차
+
+운영 Schema를 변경하는 PR은 다음 절차를 따릅니다.
+
+1. 변경 전 `/data/chatflow.db`를 Railway Volume 안의 별도 파일로 Backup합니다.
+2. 변경 내용을 적용하는 Versioned SQL 또는 Alembic Migration을 PR에 포함합니다.
+3. 운영 DB 사본에서 Migration과 현재 전체 테스트를 먼저 실행합니다.
+4. 배포 전 쓰기 요청을 중지하고 운영 DB에 Migration을 한 번만 적용합니다.
+5. 배포 후 `/health`, 로그인, Chat 저장과 기존 기록 조회를 확인합니다.
+6. 실패하면 Service를 중지하고 Backup DB를 복원한 뒤 이전 Release로 Rollback합니다.
+
+SQLite Backup 예시는 다음과 같습니다. 날짜 부분은 실제 작업 시각으로 바꿉니다.
+
+```bash
+sqlite3 /data/chatflow.db ".backup '/data/chatflow-backup-YYYYMMDD-HHMM.db'"
+```
+
+운영 Schema 변경을 `create_all()`만으로 처리하거나 기존 Volume DB를 삭제해서
+적용하지 않습니다.
 
 DB 저장 결과는 인증된 `GET /api/me/chats`로 확인할 수 있습니다. 배포 환경의
 영속성 확인 방법은 [Railway 배포 검증 문서](docs/RAILWAY_DEPLOYMENT.md)를
 따릅니다.
+
+### SQL로 대화 로그 확인
+
+`scripts/check_logs.sql`은 `users`, `chat_logs`, `request_logs`를 연결하여 최근 대화
+100개의 사용자, 생성 시각, 질문·AI 응답, 처리 상태·응답 시간과 안전한 요청
+Metadata를 최신순으로 조회합니다. 운영 감사 기능 도입 전 생성된 기존 ChatLog도
+`LEFT JOIN`으로 계속 조회됩니다.
+
+로컬 DB:
+
+```bash
+sqlite3 -header -column ./chatflow.db < scripts/check_logs.sql
+```
+
+Railway Service Shell의 Volume DB:
+
+```bash
+sqlite3 -header -column /data/chatflow.db < scripts/check_logs.sql
+```
+
+이 SQL과 사용자·관리자 조회 API는 장애 발생 시 `request_id` 주변 시각의 저장 결과를
+확인하고, 사용자별 이용 흐름과 반복 오류를 추적하며, 개인정보를 로그에 복제하지 않고
+서비스 품질 개선에 필요한 대화 기록을 점검하는 용도로 사용합니다. 운영자가 조회한
+질문·응답 원문은 Secret과 동일하게 외부 Issue·PR·Screenshot에 게시하지 않습니다.
 
 ## OpenAI 안정성
 
@@ -299,9 +473,17 @@ request_received
   └── request_completed
 ```
 
-로그에는 method, path, 상태 코드, latency, AI 시도 횟수, 질문·응답 길이와
-오류 타입만 기록합니다. 비밀번호, JWT, 질문·응답 본문, OpenAI API Key는
-기록하지 않습니다.
+로그에는 method, path, 상태 코드, latency, AI 시도 횟수, 질문·응답 길이, 오류
+타입과 allow-list 방식으로 선택한 `Origin`·`Content-Type`·`User-Agent`만
+기록합니다. `Authorization`·Cookie를 포함한 나머지 Header, 비밀번호, JWT,
+질문·응답 본문과 OpenAI API Key는 기록하지 않습니다.
+
+대화 원문은 접근 제어가 적용된 `chat_logs`에 저장합니다. 처리 상태·오류·응답 시간과
+Allow-list Header Metadata는 `request_logs`와 Railway 구조화 Application Log에
+저장하고, 성공한 Chat은 `chat_id`로 두 Table을 연결합니다. `/health`는 DB에 의존하지
+않고 감사 기록에서도 제외합니다. 오류 요청의 사용자 입력, `Authorization`, Cookie를
+DB에 보관하지 않아 실패 데이터와 인증정보의 불필요한 영속화를 막습니다. 기록은
+`request_id`, 발생 시각, 사용자 ID로 추적합니다.
 
 - DB 저장 성공·실패 구현: [app/services/chat.py](https://github.com/bangahee/ChatFlow-backend/blob/main/app/services/chat.py)
 - DB 저장 실패와 rollback 검증: [tests/test_chat_service.py](https://github.com/bangahee/ChatFlow-backend/blob/main/tests/test_chat_service.py)
@@ -316,7 +498,7 @@ DB, 실제 API Key 또는 실제 backoff 대기가 필요하지 않습니다.
 python -m pytest -q
 ```
 
-현재 구현 기준 결과는 `122 passed`입니다.
+현재 구현 기준 결과는 `124 passed`입니다.
 
 GitHub Actions는 `develop`·`main` 대상 Pull Request와 두 브랜치 Push마다
 Python 3.13에서 같은 명령을 실행합니다.
@@ -338,13 +520,14 @@ Persistent Volume을 `/data`에 Mount해야 SQLite 데이터가 재배포 후에
 유지됩니다. 구체적인 배포·재시작·데이터 영속성 검증과 증빙 항목은
 [Railway 배포 검증 문서](docs/RAILWAY_DEPLOYMENT.md)에 정리되어 있습니다.
 
-### 2026-08-29 Production 최종 검증
+### Production 최종 검증
 
 | 항목 | 결과 |
 |---|---|
 | Railway Health | Container 재시작 후 `GET /health` → `200 {"status":"ok"}` |
-| Railway Backend | `main` 커밋 `e664343`(PR #23), Deployment `8d4705df` `Successful` |
-| Vercel Frontend | `main` 커밋 `b2f7630`, Production `Ready` |
+| Railway Backend | 2026-09-01 확인 기준 `main` `655d87b`(PR #25), Railway `Successful` |
+| Backend 기능 검증 기준 | 실행 코드 `e664343`(PR #23), Deployment `8d4705df` |
+| Vercel Frontend | 2026-09-01 확인 기준 `main` `64698da`(PR #23), Production `Ready` |
 | CORS | Vercel Origin의 Login Preflight `200` 및 허용 Origin Header 확인 |
 | 사용자 흐름 | 회원가입 `201` → 로그인 `200` → 실제 OpenAI Chat `201` → 기록 조회 성공 |
 | 관리자 흐름 | 관리자 로그인 → 사용자 목록·사용자별 대화 조회 `200` |
@@ -354,11 +537,12 @@ Persistent Volume을 `/data`에 Mount해야 SQLite 데이터가 재배포 후에
 | SQLite 영속성 | Railway Container 재시작 후 동일 Chat과 AI 응답 유지 |
 | Frontend 오류 | 검증 중 Browser Console Error 없음 |
 
-Railway GitHub App 권한과 `main` Source 연결을 복구하고 Auto Deploy를 활성화한 뒤,
-PR #23의 최신 `main`을 수동 배포했습니다. 운영 INFO 로그 출력 보완도 실제 환경에
-반영되어, 성공한 Chat 요청 `0947aa18-f5dc-423f-b6f0-aa2e6371f90c`에서 아래 이벤트가
-동일한 `request_id`를 공유하는 것을 확인했습니다. 질문·응답 본문과 Secret은 로그에
-기록되지 않습니다.
+2026-08-29에 실행 코드 `e664343`을 기준으로 전체 기능과 영속성을 검증했고, 이후
+문서 동기화 PR #25까지 포함한 `655d87b`이 Railway에 성공적으로 배포됐습니다.
+PR #25는 실행 코드를 변경하지 않으므로 아래 기능 검증 결과는 현재 Release에도
+동일하게 적용됩니다. 성공한 Chat 요청
+`0947aa18-f5dc-423f-b6f0-aa2e6371f90c`에서 아래 이벤트가 동일한 `request_id`를
+공유하는 것을 확인했습니다. 질문·응답 본문과 Secret은 로그에 기록되지 않습니다.
 
 ```text
 request_received
@@ -397,9 +581,17 @@ feature branch → Pull Request/review → develop → final PR → main
 | 박주영 | [Backend PR #4 로그인 기본 작업](https://github.com/bangahee/ChatFlow-backend/pull/4), [Backend PR #11 Swagger·OpenAPI 검증](https://github.com/bangahee/ChatFlow-backend/pull/11) |
 | 김승우 | [Backend PR #5 DB·Chat API](https://github.com/bangahee/ChatFlow-backend/pull/5), [Frontend PR #3 React Frontend 통합](https://github.com/bangahee/ChatFlow/pull/3) |
 | 반가희 | [Backend PR #6 OpenAI·안정성](https://github.com/bangahee/ChatFlow-backend/pull/6), [Backend PR #7 운영 로그·통합 검증](https://github.com/bangahee/ChatFlow-backend/pull/7), [Frontend PR #7 역할·기여 정합성](https://github.com/bangahee/ChatFlow/pull/7) |
-| 김두운 | [Frontend PR #3 React Frontend 통합](https://github.com/bangahee/ChatFlow/pull/3) 및 해당 PR의 UI·UX·반응형·사용성 커밋 |
+| 김두운 | [Frontend PR #3 React Frontend 통합](https://github.com/bangahee/ChatFlow/pull/3), [Frontend PR #23 말풍선 줄바꿈](https://github.com/bangahee/ChatFlow/pull/23) 및 UI·UX·반응형·사용성 커밋 |
+| 최종 Release | [Backend PR #25 develop→main](https://github.com/bangahee/ChatFlow-backend/pull/25), [Frontend main `64698da`](https://github.com/bangahee/ChatFlow/commit/64698da3bd7e14070f51bb4ef12b411ac605736b) |
 
-두 저장소 모두 기능 Branch → Pull Request → 다른 팀원 Review → `develop`
-Merge → `develop → main` Release PR 흐름을 사용합니다. 세부 Commit은 각 PR의
-Commits 탭에서 작성자별로 확인할 수 있으며, 자동 생성된 Merge Commit을 제외한
-유의미한 작업 Commit을 개인별 기여 기준으로 사용합니다.
+표준 흐름은 기능 Branch → Pull Request → 다른 팀원 Review → `develop` Merge →
+`develop → main` Release PR입니다. Backend는 이 흐름으로 PR #25까지 Release했습니다.
+Release 이후의 제출 직전 문서·평가 호환성 수정은 여러 PR로 분산하지 않고 Review와
+필수 CI를 거친 단일 Stabilization PR로 `main`에 반영할 수 있습니다. Frontend의 UI
+긴급 수정 PR #23도 Review 후 `main`에 직접 병합한 예외입니다. 이런 예외 이후 추가
+개발이 필요하면 `main → develop` 동기화 PR을 먼저 만들고, 기능 Branch를 `main`에
+직접 병합하는 방식을 일반 개발 흐름으로 반복하지 않습니다.
+
+세부 Commit은 각 PR의 Commits 탭에서 작성자별로 확인할 수 있으며, 자동 생성된 Merge
+Commit을 제외한 유의미한 작업 Commit을 개인별 기여 기준으로 사용합니다. README의
+구현 설명은 위 PR 링크와 각 Source 링크를 통해 실제 이력과 대조할 수 있습니다.

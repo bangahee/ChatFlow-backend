@@ -1,6 +1,8 @@
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 
 from app.dependencies import get_ai_responder
+from app.models import RequestLog
 
 
 def test_health_returns_ok_without_ai_call(
@@ -16,3 +18,6 @@ def test_health_returns_ok_without_ai_call(
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+    with test_app.state.session_factory() as db:
+        assert db.scalar(select(func.count(RequestLog.id))) == 0
